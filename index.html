@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manifest Sub Studio</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <div class="panel form-panel">
+          <div class="brand-row">
+            <div>
+              <p class="eyebrow">MANIFEST SUB STUDIO</p>
+              <h1>定制 Subliminal 工作台</h1>
+            </div>
+            <div class="status-pill" id="systemStatus">Ready</div>
+          </div>
+
+          <form id="generatorForm" class="control-grid">
+            <label>
+              <span>你的名字</span>
+              <input name="selfName" value="我" maxlength="40" />
+            </label>
+
+            <label>
+              <span>主题模式</span>
+              <select name="intentMode" id="intentMode">
+                <option value="general">通用</option>
+                <option value="sp">SP / 特定对象</option>
+                <option value="money">金钱 / 事业</option>
+                <option value="study">学业 / 考试</option>
+              </select>
+            </label>
+
+            <p class="wide intent-note" id="intentNote">通用模式不会指向特定对象，适合自信、关系、状态稳定类 sub。</p>
+
+            <label class="sp-field hidden" id="spField">
+              <span>SP 名字</span>
+              <input name="spName" value="SP" maxlength="40" />
+            </label>
+
+            <label>
+              <span>文件名</span>
+              <input name="name" value="manifest_track" maxlength="48" />
+            </label>
+
+            <label>
+              <span>时长 <output id="minutesOut">10</output> min</span>
+              <input name="minutes" type="range" min="1" max="60" step="1" value="10" />
+            </label>
+
+            <label>
+              <span>音乐音量 <output id="musicVolumeOut">0.8</output></span>
+              <input name="musicVolume" type="range" min="0" max="1" step="0.01" value="0.8" />
+            </label>
+
+            <label>
+              <span>白噪音音量 <output id="noiseVolumeOut">0.35</output></span>
+              <input name="noiseVolume" type="range" min="0" max="1" step="0.01" value="0.35" />
+            </label>
+
+            <label>
+              <span>人声音量 <output id="voiceVolumeOut">0.055</output></span>
+              <input name="voiceVolume" type="range" min="0" max="0.16" step="0.005" value="0.055" />
+            </label>
+
+            <label>
+              <span>人声层数 <output id="voiceLayersOut">3</output></span>
+              <input name="voiceLayers" type="range" min="1" max="60" step="1" value="3" />
+            </label>
+
+            <label>
+              <span>淡入淡出 <output id="fadeOut">6</output> sec</span>
+              <input name="fadeSeconds" type="range" min="0" max="15" step="1" value="6" />
+            </label>
+
+            <label>
+              <span>频率音量 <output id="toneVolumeOut">0</output></span>
+              <input name="toneVolume" type="range" min="0" max="0.05" step="0.001" value="0" />
+            </label>
+
+            <div class="wide frequency-panel">
+              <div class="frequency-header">
+                <div>
+                  <span>频率选择</span>
+                  <p>可多选，也可以输入自己的频率；默认不加入频率音，避免背景嗡声。</p>
+                </div>
+                <button class="ghost-button small" id="recommendButton" type="button">分析文案</button>
+              </div>
+              <div class="frequency-grid">
+                <label class="chip"><input type="checkbox" name="presetFrequency" value="174" /><span>174 Hz<small>放松/安定</small></span></label>
+                <label class="chip"><input type="checkbox" name="presetFrequency" value="285" /><span>285 Hz<small>更新/机会</small></span></label>
+                <label class="chip"><input type="checkbox" name="presetFrequency" value="396" /><span>396 Hz<small>释放/突破</small></span></label>
+                <label class="chip"><input type="checkbox" name="presetFrequency" value="432" /><span>432 Hz<small>平静/睡眠</small></span></label>
+                <label class="chip"><input type="checkbox" name="presetFrequency" value="528" /><span>528 Hz<small>爱/温柔</small></span></label>
+                <label class="chip"><input type="checkbox" name="presetFrequency" value="639" /><span>639 Hz<small>关系/沟通</small></span></label>
+                <label class="chip"><input type="checkbox" name="presetFrequency" value="741" /><span>741 Hz<small>表达/专注</small></span></label>
+                <label class="chip"><input type="checkbox" name="presetFrequency" value="852" /><span>852 Hz<small>直觉/丰盛</small></span></label>
+              </div>
+              <label>
+                <span>自定义频率</span>
+                <input name="customFrequencies" placeholder="例如 111, 222, 963" />
+              </label>
+              <p class="recommendation-text" id="recommendationText">推荐会根据文案关键词匹配主题频率；想加入频率音时再把频率音量调到 0.003-0.01。</p>
+            </div>
+
+            <div class="wide audio-source-grid">
+              <label class="file-control">
+                <span>音乐音频</span>
+                <input name="musicFile" type="file" accept="audio/*" />
+              </label>
+              <label class="file-control">
+                <span>白噪音 / 频率音频</span>
+                <input name="noiseFile" type="file" accept="audio/*" />
+              </label>
+            </div>
+
+            <div class="wide library-panel">
+              <div class="library-header">
+                <div>
+                  <span>开放音乐库</span>
+                  <p>搜索开放授权音频，使用前请核对作品页授权。</p>
+                </div>
+                <div class="library-actions">
+                  <button class="ghost-button small" id="musicSuggestButton" type="button">推荐关键词</button>
+                  <button class="ghost-button small" id="frequencyNoiseButton" type="button">搜频率白噪音</button>
+                </div>
+              </div>
+              <fieldset class="library-type">
+                <legend>搜索类型</legend>
+                <label class="radio-card">
+                  <input type="radio" name="libraryType" value="music" checked />
+                  <span>音乐</span>
+                </label>
+                <label class="radio-card">
+                  <input type="radio" name="libraryType" value="noise" />
+                  <span>白噪音 / 频率音</span>
+                </label>
+              </fieldset>
+              <div class="library-search">
+                <input name="musicQuery" placeholder="音乐：romantic ambient；频率：528 Hz" />
+                <button class="ghost-button small" id="musicSearchButton" type="button">搜索音频</button>
+              </div>
+              <div class="library-results" id="musicResults"></div>
+            </div>
+
+            <div class="wide recorder-panel">
+              <div class="recorder-header">
+                <div>
+                  <span>AI 配音 / 人声</span>
+                  <p>可试听浏览器 AI 朗读，也可以上传 AI 配音音频或直接录音。</p>
+                </div>
+                <div class="recorder-actions">
+                  <button class="ghost-button small" id="recordButton" type="button">开始录音</button>
+                  <button class="ghost-button small" id="stopButton" type="button" disabled>停止</button>
+                </div>
+              </div>
+
+              <div class="tts-panel">
+                <label>
+                  <span>AI 声音</span>
+                  <select name="ttsVoice" id="ttsVoice"></select>
+                </label>
+                <label>
+                  <span>语速 <output id="ttsRateOut">0.9</output></span>
+                  <input name="ttsRate" type="range" min="0.5" max="1.5" step="0.05" value="0.9" />
+                </label>
+                <label>
+                  <span>音调 <output id="ttsPitchOut">1</output></span>
+                  <input name="ttsPitch" type="range" min="0.5" max="1.6" step="0.05" value="1" />
+                </label>
+                <div class="tts-actions">
+                  <button class="ghost-button small" id="speakButton" type="button">试听配音</button>
+                  <button class="ghost-button small" id="cancelSpeakButton" type="button">停止朗读</button>
+                </div>
+              </div>
+
+              <input name="voiceFile" type="file" accept="audio/*" />
+              <audio id="voicePreview" controls></audio>
+              <p class="recorder-status" id="recorderStatus">录音状态：待机</p>
+            </div>
+
+            <p class="wide hint-line">层数参考：2-4 层更清晰，10-30 层更接近社区高密度风格，30 层以上会更糊也更慢。</p>
+
+            <fieldset class="mode-row">
+              <legend>肯定句</legend>
+              <label class="radio-card">
+                <input type="radio" name="affirmationMode" value="default" checked />
+                <span>默认 + 自定义</span>
+              </label>
+              <label class="radio-card">
+                <input type="radio" name="affirmationMode" value="custom" />
+                <span>只用自定义</span>
+              </label>
+            </fieldset>
+
+            <label class="wide">
+              <span>肯定句文案</span>
+              <textarea name="customLines" rows="7" maxlength="6400" placeholder="每行一句，用来保存文案；导出音频时请上传或录制对应人声。"></textarea>
+            </label>
+
+            <div class="wide text-actions">
+              <button class="ghost-button small" id="fillDefaultTextButton" type="button">填入默认文案</button>
+              <button class="ghost-button small" id="clearTextButton" type="button">清空文案</button>
+            </div>
+
+            <button class="primary-button" id="submitButton" type="submit">
+              <span class="button-icon">♪</span>
+              <span>生成 WAV</span>
+            </button>
+          </form>
+        </div>
+
+        <aside class="panel output-panel">
+          <canvas id="waveCanvas" width="900" height="360"></canvas>
+          <div class="output-card">
+            <div>
+              <p class="eyebrow">OUTPUT</p>
+              <h2 id="outputTitle">等待生成</h2>
+            </div>
+            <ol class="steps">
+              <li>选择主题和文案</li>
+              <li>上传背景音与人声</li>
+              <li>生成并下载 WAV</li>
+            </ol>
+            <audio id="audioPlayer" controls></audio>
+            <div class="download-row">
+              <a id="audioLink" class="ghost-button disabled" href="#">下载音频</a>
+              <a id="textLink" class="ghost-button disabled" href="#">查看文案</a>
+            </div>
+            <p id="message" class="message">纯浏览器混音，适合直接部署到 GitHub Pages。</p>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
