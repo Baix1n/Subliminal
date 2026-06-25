@@ -179,6 +179,11 @@ def generate(args, progress=None):
 
     print(f"已生成：{output_path}")
     print(f"人声层数：{args.voice_layers}")
+    affirmations_text = getattr(args, "affirmations_text", "")
+    if affirmations_text:
+        text_path = output_dir / f"{args.name}_affirmations.txt"
+        text_path.write_text(affirmations_text.rstrip() + "\n", encoding="utf-8")
+        print(f"文案已保存：{text_path}")
     return output_path
 
 
@@ -199,6 +204,7 @@ def main():
     parser.add_argument("--tone-volume", type=float, default=0, help="频率正弦音量。")
     parser.add_argument("--sample-rate", type=int, default=44100, help="输出采样率。")
     parser.add_argument("--chunk-seconds", type=float, default=10, help="分块写入秒数。")
+    parser.add_argument("--affirmations-text", default="", help="同时保存的肯定句文本。")
     args = parser.parse_args()
 
     if args.voice_layers < 1:

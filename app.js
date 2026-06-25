@@ -584,7 +584,7 @@ async function generateInBrowser() {
   const noiseFile = form.elements.noiseFile.files[0] || selectedLibraryNoiseBlob;
   const voiceFile = form.elements.voiceFile.files[0] || recordedVoiceBlob;
   if (!musicFile && !noiseFile) throw new Error("请先选择音乐或白噪音音频。");
-  if (!voiceFile) throw new Error("请上传或录制肯定句人声。");
+  if (!voiceFile) throw new Error("还没有人声：请先上传或录制肯定句人声，再生成音频。");
   if (!AudioContextClass) throw new Error("当前浏览器不支持 Web Audio。");
 
   const audioContext = new AudioContextClass();

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+outputs/
+releases-*/
+start_windows.bat
+start_mac_linux.sh
+python-*.exe
+upload-source/
