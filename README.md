@@ -39,25 +39,13 @@ http://127.0.0.1:8765
 
 ## 本地桌面版
 
-Windows：
-
-```bat
-start_windows.bat
-```
-
-Windows 启动脚本会自动检查 Python 和依赖；如果启动失败，窗口会停住显示原因。
-
-macOS / Linux：
-
-```bash
-sh start_mac_linux.sh
-```
-
-也可以直接运行：
+源码仓库里直接运行：
 
 ```bash
 python local_app.py
 ```
+
+Windows / macOS / Linux 的启动脚本只放在 release 压缩包里。
 
 桌面版支持选择人声、背景音乐、白噪音 WAV 文件，并设置人声层数。上万层建议先从这些参数试起：
 
