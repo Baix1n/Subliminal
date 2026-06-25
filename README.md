@@ -12,13 +12,15 @@
 
 只有本地桌面版和命令行版本需要这一步；如果只预览网页，可以跳过。
 
+需要 Python 3.10 或更新版本。推荐安装 Python 3.11 / 3.12。
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Windows 如果没有 `python3`，可以把命令里的 `python3` 换成 `python`。
+Windows 如果没有 `python3`，可以把命令里的 `python3` 换成 `python`。安装 Python 时建议勾选 `Add python.exe to PATH`。
 
 ## 本地部署
 
@@ -42,6 +44,8 @@ Windows：
 ```bat
 start_windows.bat
 ```
+
+Windows 启动脚本会自动检查 Python 和依赖；如果启动失败，窗口会停住显示原因。
 
 macOS / Linux：
 
