@@ -149,31 +149,12 @@
             <div class="wide recorder-panel">
               <div class="recorder-header">
                 <div>
-                  <span>AI 配音 / 人声</span>
-                  <p>可试听浏览器 AI 朗读，也可以上传 AI 配音音频或直接录音。</p>
+                  <span>人声</span>
+                  <p>上传人声音频或直接录音，用来叠入肯定句。</p>
                 </div>
                 <div class="recorder-actions">
                   <button class="ghost-button small" id="recordButton" type="button">开始录音</button>
                   <button class="ghost-button small" id="stopButton" type="button" disabled>停止</button>
-                </div>
-              </div>
-
-              <div class="tts-panel">
-                <label>
-                  <span>AI 声音</span>
-                  <select name="ttsVoice" id="ttsVoice"></select>
-                </label>
-                <label>
-                  <span>语速 <output id="ttsRateOut">0.9</output></span>
-                  <input name="ttsRate" type="range" min="0.5" max="1.5" step="0.05" value="0.9" />
-                </label>
-                <label>
-                  <span>音调 <output id="ttsPitchOut">1</output></span>
-                  <input name="ttsPitch" type="range" min="0.5" max="1.6" step="0.05" value="1" />
-                </label>
-                <div class="tts-actions">
-                  <button class="ghost-button small" id="speakButton" type="button">试听配音</button>
-                  <button class="ghost-button small" id="cancelSpeakButton" type="button">停止朗读</button>
                 </div>
               </div>
 
@@ -230,7 +211,7 @@
               <a id="audioLink" class="ghost-button disabled" href="#">下载音频</a>
               <a id="textLink" class="ghost-button disabled" href="#">查看文案</a>
             </div>
-            <p id="message" class="message">纯浏览器混音，适合直接部署到 GitHub Pages。</p>
+            <p id="message" class="message">等待生成音频。</p>
           </div>
         </aside>
       </section>

@@ -8,9 +8,6 @@ const musicSearchButton = document.querySelector("#musicSearchButton");
 const frequencyNoiseButton = document.querySelector("#frequencyNoiseButton");
 const fillDefaultTextButton = document.querySelector("#fillDefaultTextButton");
 const clearTextButton = document.querySelector("#clearTextButton");
-const speakButton = document.querySelector("#speakButton");
-const cancelSpeakButton = document.querySelector("#cancelSpeakButton");
-const ttsVoiceSelect = document.querySelector("#ttsVoice");
 const recordButton = document.querySelector("#recordButton");
 const stopButton = document.querySelector("#stopButton");
 const audioPlayer = document.querySelector("#audioPlayer");
@@ -45,8 +42,6 @@ const rangeBindings = [
   ["noiseVolume", "noiseVolumeOut"],
   ["fadeSeconds", "fadeOut"],
   ["toneVolume", "toneVolumeOut"],
-  ["ttsRate", "ttsRateOut"],
-  ["ttsPitch", "ttsPitchOut"],
 ];
 
 const frequencyThemes = [
@@ -207,65 +202,6 @@ function renderedDefaultAffirmations() {
   return (defaultAffirmationsByMode[intentMode] || defaultAffirmationsByMode.general)
     .map((line) => line.replaceAll("{selfName}", selfName).replaceAll("{spName}", spName))
     .join("\n");
-}
-
-function populateTtsVoices() {
-  if (!("speechSynthesis" in window)) {
-    ttsVoiceSelect.innerHTML = "<option>当前浏览器不支持</option>";
-    speakButton.disabled = true;
-    cancelSpeakButton.disabled = true;
-    return;
-  }
-
-  const voices = window.speechSynthesis.getVoices();
-  ttsVoiceSelect.textContent = "";
-
-  const preferred = voices
-    .map((voice, index) => ({ voice, index }))
-    .sort((a, b) => {
-      const aZh = /^zh|Chinese|Mandarin|Tingting|Meijia|Sinji/i.test(`${a.voice.lang} ${a.voice.name}`) ? 0 : 1;
-      const bZh = /^zh|Chinese|Mandarin|Tingting|Meijia|Sinji/i.test(`${b.voice.lang} ${b.voice.name}`) ? 0 : 1;
-      return aZh - bZh || a.voice.name.localeCompare(b.voice.name);
-    });
-
-  for (const { voice, index } of preferred) {
-    const option = document.createElement("option");
-    option.value = String(index);
-    option.textContent = `${voice.name} (${voice.lang || "unknown"})`;
-    ttsVoiceSelect.append(option);
-  }
-
-  if (!preferred.length) {
-    const option = document.createElement("option");
-    option.textContent = "默认系统声音";
-    ttsVoiceSelect.append(option);
-  }
-}
-
-function speakAffirmations() {
-  if (!("speechSynthesis" in window)) {
-    setMessage("当前浏览器不支持 AI 朗读。", "error");
-    return;
-  }
-
-  window.speechSynthesis.cancel();
-  const text = getAffirmationText();
-  if (!text.trim()) {
-    setMessage("请先填写肯定句文案。", "error");
-    return;
-  }
-
-  const utterance = new SpeechSynthesisUtterance(text);
-  const voices = window.speechSynthesis.getVoices();
-  const selectedVoice = voices[Number(ttsVoiceSelect.value)];
-  if (selectedVoice) utterance.voice = selectedVoice;
-  utterance.rate = Number(form.elements.ttsRate.value);
-  utterance.pitch = Number(form.elements.ttsPitch.value);
-  utterance.volume = 1;
-  utterance.onstart = () => setMessage("正在试听 AI 配音。", "success");
-  utterance.onend = () => setMessage("AI 配音试听结束。", "success");
-  utterance.onerror = () => setMessage("AI 配音朗读失败，可以换一个声音试试。", "error");
-  window.speechSynthesis.speak(utterance);
 }
 
 async function readArrayBuffer(fileOrBlob) {
@@ -805,8 +741,6 @@ frequencyNoiseButton.addEventListener("click", () => {
   suggestFrequencyNoiseKeyword();
   searchOpenverseMusic();
 });
-speakButton.addEventListener("click", speakAffirmations);
-cancelSpeakButton.addEventListener("click", () => window.speechSynthesis?.cancel());
 form.elements.intentMode.addEventListener("change", syncIntentMode);
 fillDefaultTextButton.addEventListener("click", () => {
   form.elements.customLines.value = renderedDefaultAffirmations();
@@ -818,13 +752,6 @@ clearTextButton.addEventListener("click", () => {
   setMessage("已清空自定义文案。");
 });
 syncIntentMode();
-
-if ("speechSynthesis" in window) {
-  populateTtsVoices();
-  window.speechSynthesis.addEventListener("voiceschanged", populateTtsVoices);
-} else {
-  populateTtsVoices();
-}
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
