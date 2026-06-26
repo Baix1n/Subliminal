@@ -32,6 +32,7 @@ const goalFileList = document.querySelector("#goalFileList");
 const spField = document.querySelector("#spField");
 const intentNote = document.querySelector("#intentNote");
 const productionPreset = document.querySelector("#productionPreset");
+const spNameMirror = form.elements.spNameMirror;
 const pageTabs = [...document.querySelectorAll(".page-tab")];
 const pageSections = [...document.querySelectorAll("[data-page-section]")];
 const canvas = document.querySelector("#waveCanvas");
@@ -50,7 +51,7 @@ let selectedLibraryNoiseName = "";
 let practiceLines = [];
 let practiceIndex = 0;
 let practiceClicks = {};
-const webStateKey = "manifest-sub-studio-web-state-v1";
+const webStateKey = "manifest-sub-studio-web-state-v2";
 
 const rangeBindings = [
   ["minutes", "minutesOut"],
@@ -305,6 +306,15 @@ function syncIntentMode() {
   intentNote.textContent = intentNotes[form.elements.intentMode.value] || intentNotes.general;
 }
 
+function syncSpName(source) {
+  const sourceInput = source === "mirror" ? spNameMirror : form.elements.spName;
+  const targetInput = source === "mirror" ? form.elements.spName : spNameMirror;
+  if (!sourceInput || !targetInput) return;
+  targetInput.value = sourceInput.value;
+  refreshPractice();
+  saveWebState(true);
+}
+
 function applyProductionPreset() {
   const preset = productionPresets[productionPreset.value];
   if (!preset) return;
@@ -410,9 +420,13 @@ function loadWebState(silent = false) {
   }
   try {
     const state = JSON.parse(raw);
+    if (/(\?{3,})/.test(state.customLines || "")) {
+      state.customLines = "";
+    }
     for (const key of ["selfName", "spName", "intentMode", "affirmationMode", "affirmationCategory", "customLines", "gratitudeLines", "dailyIntention", "embodiedFeeling", "goalText"]) {
       if (form.elements[key] && state[key] !== undefined) form.elements[key].value = state[key];
     }
+    if (spNameMirror) spNameMirror.value = form.elements.spName.value;
     practiceIndex = Number(state.practiceIndex || 0);
     practiceClicks = state.practiceClicks || {};
     updateGoalFileList(state.goalFileNames || []);
@@ -439,6 +453,8 @@ function bindWebHelperEvents() {
   ["affirmationCategory", "customLines", "gratitudeLines", "dailyIntention", "embodiedFeeling", "goalText"].forEach((name) => {
     form.elements[name]?.addEventListener("input", () => saveWebState(true));
   });
+  form.elements.spName.addEventListener("input", () => syncSpName("main"));
+  spNameMirror?.addEventListener("input", () => syncSpName("mirror"));
   if (form.elements.affirmationMode?.forEach) {
     form.elements.affirmationMode.forEach((input) => input.addEventListener("change", () => {
       refreshPractice();
@@ -458,6 +474,7 @@ pageTabs.forEach((tab) => {
 
 bindWebHelperEvents();
 syncIntentMode();
+if (spNameMirror) spNameMirror.value = form.elements.spName.value;
 loadWebState(true);
 refreshPractice();
 
