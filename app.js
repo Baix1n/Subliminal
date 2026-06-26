@@ -12,6 +12,9 @@ const saveWebStateButton = document.querySelector("#saveWebStateButton");
 const loadWebStateButton = document.querySelector("#loadWebStateButton");
 const saveVisionButton = document.querySelector("#saveVisionButton");
 const loadVisionButton = document.querySelector("#loadVisionButton");
+const exportDataButton = document.querySelector("#exportDataButton");
+const importDataButton = document.querySelector("#importDataButton");
+const importDataInput = document.querySelector("#importDataInput");
 const refreshPracticeButton = document.querySelector("#refreshPracticeButton");
 const nextAffirmationButton = document.querySelector("#nextAffirmationButton");
 const countAffirmationButton = document.querySelector("#countAffirmationButton");
@@ -30,6 +33,7 @@ const currentAffirmationCount = document.querySelector("#currentAffirmationCount
 const totalAffirmationCount = document.querySelector("#totalAffirmationCount");
 const goalFileList = document.querySelector("#goalFileList");
 const spField = document.querySelector("#spField");
+const affirmationSpField = document.querySelector("#affirmationSpField");
 const intentNote = document.querySelector("#intentNote");
 const productionPreset = document.querySelector("#productionPreset");
 const spNameMirror = form.elements.spNameMirror;
@@ -51,6 +55,7 @@ let selectedLibraryNoiseName = "";
 let practiceLines = [];
 let practiceIndex = 0;
 let practiceClicks = {};
+let webGratitudeEntries = {};
 const webStateKey = "manifest-sub-studio-web-state-v2";
 
 const rangeBindings = [
@@ -301,9 +306,15 @@ function getExportText() {
 }
 
 function syncIntentMode() {
-  const isSp = form.elements.intentMode.value === "sp";
-  spField.classList.toggle("hidden", !isSp);
+  syncSpVisibility();
   intentNote.textContent = intentNotes[form.elements.intentMode.value] || intentNotes.general;
+}
+
+function syncSpVisibility() {
+  const category = form.elements.affirmationCategory?.value || "theme";
+  const isSp = form.elements.intentMode.value === "sp" || category === "relationship";
+  spField.classList.toggle("hidden", !isSp);
+  affirmationSpField?.classList.toggle("hidden", !isSp);
 }
 
 function syncSpName(source) {
@@ -392,23 +403,133 @@ function updateGoalFileList(namesFromStorage = null) {
   goalFileList.textContent = names.length ? names.join(" / ") : "\u5c1a\u672a\u9009\u62e9\u76ee\u6807\u6587\u4ef6\u3002";
 }
 
-function saveWebState(silent = false) {
-  const state = {
-    selfName: form.elements.selfName.value,
-    spName: form.elements.spName.value,
-    intentMode: form.elements.intentMode.value,
-    affirmationMode: form.elements.affirmationMode.value,
-    affirmationCategory: form.elements.affirmationCategory?.value || "theme",
-    customLines: form.elements.customLines.value,
-    gratitudeLines: form.elements.gratitudeLines.value,
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function currentGratitudeDate() {
+  const value = form.elements.gratitudeDate?.value;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value : todayKey();
+}
+
+function saveCurrentGratitudeEntry() {
+  const dateKey = currentGratitudeDate();
+  form.elements.gratitudeDate.value = dateKey;
+  webGratitudeEntries[dateKey] = {
     dailyIntention: form.elements.dailyIntention.value,
     embodiedFeeling: form.elements.embodiedFeeling.value,
-    goalText: form.elements.goalText?.value || "",
-    goalFileNames: Array.from(form.elements.goalFiles?.files || []).map((file) => file.name),
-    practiceIndex,
-    practiceClicks,
+    gratitude: form.elements.gratitudeLines.value,
   };
-  localStorage.setItem(webStateKey, JSON.stringify(state));
+  refreshWebGratitudeCalendar();
+}
+
+function loadGratitudeEntry(dateKey = currentGratitudeDate()) {
+  const entry = webGratitudeEntries[dateKey];
+  form.elements.gratitudeDate.value = dateKey;
+  if (!entry) return;
+  form.elements.dailyIntention.value = entry.dailyIntention || entry.daily_intention || "";
+  form.elements.embodiedFeeling.value = entry.embodiedFeeling || entry.embodied_feeling || "";
+  form.elements.gratitudeLines.value = entry.gratitude || "";
+}
+
+function refreshWebGratitudeCalendar() {
+  const calendar = form.elements.gratitudeCalendar;
+  if (!calendar) return;
+  calendar.innerHTML = "";
+  const dates = [...new Set([...Object.keys(webGratitudeEntries), currentGratitudeDate()])].sort().reverse();
+  for (const dateKey of dates) {
+    const option = document.createElement("option");
+    option.value = dateKey;
+    option.textContent = dateKey;
+    if (dateKey === currentGratitudeDate()) option.selected = true;
+    calendar.appendChild(option);
+  }
+}
+
+function createPortableData() {
+  saveCurrentGratitudeEntry();
+  const goalFileNames = Array.from(form.elements.goalFiles?.files || []).map((file) => file.name);
+  return {
+    schema: "subliminal-portable-data",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    profile: {
+      selfName: form.elements.selfName.value,
+      spName: form.elements.spName.value,
+      intentMode: form.elements.intentMode.value,
+      affirmationMode: form.elements.affirmationMode.value,
+      affirmationCategory: form.elements.affirmationCategory?.value || "theme",
+    },
+    affirmations: {
+      customLines: form.elements.customLines.value,
+      practiceIndex,
+      practiceClicks,
+    },
+    gratitude: {
+      currentDate: currentGratitudeDate(),
+      entries: webGratitudeEntries,
+    },
+    vision: {
+      goalText: form.elements.goalText?.value || "",
+      goalFileNames,
+      goalFiles: goalFileNames,
+    },
+  };
+}
+
+function stateFromPortableData(data) {
+  const profile = data.profile || data;
+  const affirmations = data.affirmations || data;
+  const gratitude = data.gratitude || {};
+  const vision = data.vision || data;
+  const entries = gratitude.entries || {};
+  if (!Object.keys(entries).length && (data.gratitudeLines || data.dailyIntention || data.embodiedFeeling)) {
+    entries[todayKey()] = {
+      gratitude: data.gratitudeLines || "",
+      dailyIntention: data.dailyIntention || "",
+      embodiedFeeling: data.embodiedFeeling || "",
+    };
+  }
+  const dateKey = gratitude.currentDate || Object.keys(entries).sort().pop() || todayKey();
+  const entry = entries[dateKey] || {};
+  return {
+    selfName: profile.selfName ?? profile.self_name ?? "",
+    spName: profile.spName ?? profile.sp_name ?? "SP",
+    intentMode: profile.intentMode ?? profile.intent_mode ?? "general",
+    affirmationMode: profile.affirmationMode ?? profile.affirmation_mode ?? "default",
+    affirmationCategory: profile.affirmationCategory ?? profile.affirmation_category ?? "theme",
+    customLines: affirmations.customLines ?? affirmations.custom_text ?? "",
+    gratitudeDate: dateKey,
+    gratitudeEntries: entries,
+    gratitudeLines: entry.gratitude ?? "",
+    dailyIntention: entry.dailyIntention ?? entry.daily_intention ?? "",
+    embodiedFeeling: entry.embodiedFeeling ?? entry.embodied_feeling ?? "",
+    goalText: vision.goalText ?? vision.goal ?? "",
+    goalFileNames: vision.goalFileNames ?? vision.goalFiles ?? vision.goal_files ?? [],
+    practiceIndex: affirmations.practiceIndex ?? affirmations.affirmation_index ?? 0,
+    practiceClicks: affirmations.practiceClicks ?? affirmations.affirmation_clicks ?? {},
+  };
+}
+
+function applyWebState(state, silent = false) {
+  if (/(\?{3,})/.test(state.customLines || "")) state.customLines = "";
+  webGratitudeEntries = state.gratitudeEntries || {};
+  for (const key of ["selfName", "spName", "intentMode", "affirmationMode", "affirmationCategory", "customLines", "gratitudeLines", "dailyIntention", "embodiedFeeling", "goalText"]) {
+    if (form.elements[key] && state[key] !== undefined) form.elements[key].value = state[key];
+  }
+  form.elements.gratitudeDate.value = state.gratitudeDate || todayKey();
+  if (spNameMirror) spNameMirror.value = form.elements.spName.value;
+  practiceIndex = Number(state.practiceIndex || 0);
+  practiceClicks = state.practiceClicks || {};
+  updateGoalFileList(state.goalFileNames || []);
+  refreshWebGratitudeCalendar();
+  syncIntentMode();
+  refreshPractice();
+  if (!silent) setMessage("\u5df2\u5bfc\u5165\u901a\u7528\u6570\u636e\u3002", "success");
+}
+
+function saveWebState(silent = false) {
+  localStorage.setItem(webStateKey, JSON.stringify(createPortableData()));
   if (!silent) setMessage("\u5df2\u4fdd\u5b58\u5230\u6d4f\u89c8\u5668\u672c\u5730\u3002", "success");
 }
 
@@ -419,30 +540,62 @@ function loadWebState(silent = false) {
     return;
   }
   try {
-    const state = JSON.parse(raw);
-    if (/(\?{3,})/.test(state.customLines || "")) {
-      state.customLines = "";
-    }
-    for (const key of ["selfName", "spName", "intentMode", "affirmationMode", "affirmationCategory", "customLines", "gratitudeLines", "dailyIntention", "embodiedFeeling", "goalText"]) {
-      if (form.elements[key] && state[key] !== undefined) form.elements[key].value = state[key];
-    }
-    if (spNameMirror) spNameMirror.value = form.elements.spName.value;
-    practiceIndex = Number(state.practiceIndex || 0);
-    practiceClicks = state.practiceClicks || {};
-    updateGoalFileList(state.goalFileNames || []);
-    syncIntentMode();
-    refreshPractice();
+    applyWebState(stateFromPortableData(JSON.parse(raw)), true);
     if (!silent) setMessage("\u5df2\u4ece\u6d4f\u89c8\u5668\u672c\u5730\u8bfb\u53d6\u3002", "success");
   } catch (error) {
     setMessage("\u8bfb\u53d6\u5931\u8d25\uff0c\u672c\u5730\u8bb0\u5f55\u53ef\u80fd\u635f\u574f\u3002", "error");
   }
 }
 
+function exportPortableData() {
+  const blob = new Blob([JSON.stringify(createPortableData(), null, 2) + "\n"], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `subliminal-data-${todayKey()}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  setMessage("\u5df2\u5bfc\u51fa\u901a\u7528\u6570\u636e\u6587\u4ef6\u3002", "success");
+}
+
+async function importPortableData(file) {
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    applyWebState(stateFromPortableData(data));
+    saveWebState(true);
+  } catch (error) {
+    setMessage("\u5bfc\u5165\u5931\u8d25\uff0c\u8bf7\u786e\u8ba4\u662f\u901a\u7528\u6570\u636e JSON\u3002", "error");
+  } finally {
+    importDataInput.value = "";
+  }
+}
+
 function bindWebHelperEvents() {
   saveWebStateButton.addEventListener("click", () => saveWebState(false));
   loadWebStateButton.addEventListener("click", () => loadWebState(false));
+  exportDataButton.addEventListener("click", exportPortableData);
+  importDataButton.addEventListener("click", () => importDataInput.click());
+  importDataInput.addEventListener("change", () => importPortableData(importDataInput.files[0]));
   saveVisionButton.addEventListener("click", () => saveWebState(false));
   loadVisionButton.addEventListener("click", () => loadWebState(false));
+  document.querySelector("#saveGratitudeButton")?.addEventListener("click", () => {
+    saveCurrentGratitudeEntry();
+    saveWebState(false);
+  });
+  document.querySelector("#loadGratitudeButton")?.addEventListener("click", () => {
+    loadGratitudeEntry();
+    saveWebState(true);
+  });
+  form.elements.gratitudeCalendar?.addEventListener("change", () => {
+    loadGratitudeEntry(form.elements.gratitudeCalendar.value);
+    saveWebState(true);
+  });
+  form.elements.gratitudeDate?.addEventListener("change", () => {
+    loadGratitudeEntry();
+    refreshWebGratitudeCalendar();
+    saveWebState(true);
+  });
   refreshPracticeButton.addEventListener("click", refreshPractice);
   nextAffirmationButton.addEventListener("click", nextPracticeLine);
   countAffirmationButton.addEventListener("click", countPracticeLine);
@@ -452,6 +605,11 @@ function bindWebHelperEvents() {
   });
   ["affirmationCategory", "customLines", "gratitudeLines", "dailyIntention", "embodiedFeeling", "goalText"].forEach((name) => {
     form.elements[name]?.addEventListener("input", () => saveWebState(true));
+  });
+  form.elements.affirmationCategory?.addEventListener("change", () => {
+    syncSpVisibility();
+    refreshPractice();
+    saveWebState(true);
   });
   form.elements.spName.addEventListener("input", () => syncSpName("main"));
   spNameMirror?.addEventListener("input", () => syncSpName("mirror"));
@@ -473,6 +631,8 @@ pageTabs.forEach((tab) => {
 });
 
 bindWebHelperEvents();
+if (form.elements.gratitudeDate) form.elements.gratitudeDate.value = todayKey();
+refreshWebGratitudeCalendar();
 syncIntentMode();
 if (spNameMirror) spNameMirror.value = form.elements.spName.value;
 loadWebState(true);

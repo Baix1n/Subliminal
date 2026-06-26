@@ -362,6 +362,8 @@ class LocalApp(tk.Tk):
         self.gratitude_date_list.grid(row=0, column=0, sticky="ns", padx=8, pady=8)
         self.gratitude_date_list.bind("<<ListboxSelect>>", self.on_gratitude_date_selected)
         ttk.Button(calendar_box, text="\u4eca\u5929", command=self.select_today_gratitude).grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
+        ttk.Button(calendar_box, text="\u5bfc\u51fa\u901a\u7528\u6570\u636e", command=self.export_portable_data).grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 8))
+        ttk.Button(calendar_box, text="\u5bfc\u5165\u901a\u7528\u6570\u636e", command=self.import_portable_data).grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 8))
 
         gratitude = ttk.LabelFrame(frame, text="\u611f\u6069\u65e5\u8bb0", style="Section.TLabelframe")
         gratitude.grid(row=1, column=1, sticky="nsew")
@@ -452,7 +454,7 @@ class LocalApp(tk.Tk):
             state="readonly",
         )
         category_box.grid(row=6, column=1, sticky="ew", padx=8, pady=8)
-        category_box.bind("<<ComboboxSelected>>", lambda _event: self.refresh_affirmation_practice())
+        category_box.bind("<<ComboboxSelected>>", lambda _event: (self.sync_intent(), self.refresh_affirmation_practice()))
         buttons = ttk.Frame(frame)
         buttons.grid(row=7, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 8))
         ttk.Button(buttons, text="填入默认文案", command=self.fill_default_text).pack(side="left")
@@ -604,8 +606,9 @@ class LocalApp(tk.Tk):
 
     def sync_intent(self):
         mode = self.vars["intent_mode"].get()
+        category = self.vars["affirmation_category"].get()
         self.intent_note.configure(text=INTENT_NOTES.get(mode, INTENT_NOTES["general"]))
-        if mode == "sp":
+        if mode == "sp" or category == "relationship":
             self.sp_label.grid()
             self.sp_entry.grid()
         else:
@@ -753,6 +756,7 @@ class LocalApp(tk.Tk):
             str(key): int(value)
             for key, value in data.get("affirmation_clicks", {}).items()
         }
+        self.sync_intent()
         self.refresh_affirmation_practice()
         if not silent:
             self.status.set("\u80af\u5b9a\u8bed\u5df2\u8bfb\u53d6\u3002")
@@ -925,6 +929,134 @@ class LocalApp(tk.Tk):
             self.goal_file_list.insert("end", path.name)
         if not silent:
             self.status.set("\u613f\u671b\u677f\u5df2\u8bfb\u53d6\u3002")
+
+    def create_portable_data(self):
+        self.save_gratitude_entry(silent=True)
+        date_key = self.gratitude_date()
+        return {
+            "schema": "subliminal-portable-data",
+            "version": 1,
+            "exportedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "profile": {
+                "selfName": self.vars["self_name"].get(),
+                "spName": self.vars["sp_name"].get(),
+                "intentMode": self.vars["intent_mode"].get(),
+                "affirmationMode": self.vars["affirmation_mode"].get(),
+                "affirmationCategory": self.vars["affirmation_category"].get(),
+            },
+            "affirmations": {
+                "customLines": self.custom_text.get("1.0", "end").strip(),
+                "recordingPrompt": self.recording_prompt_text.get("1.0", "end").strip(),
+                "practiceIndex": self.affirmation_index,
+                "practiceClicks": self.affirmation_clicks,
+            },
+            "gratitude": {
+                "currentDate": date_key,
+                "entries": {
+                    key: {
+                        "dailyIntention": value.get("daily_intention", value.get("dailyIntention", "")),
+                        "embodiedFeeling": value.get("embodied_feeling", value.get("embodiedFeeling", "")),
+                        "gratitude": value.get("gratitude", ""),
+                    }
+                    for key, value in self.gratitude_entries.items()
+                },
+            },
+            "vision": {
+                "goalText": self.goal_text.get("1.0", "end").strip(),
+                "goalFiles": [str(path) for path in self.goal_files],
+                "goalFileNames": [path.name for path in self.goal_files],
+            },
+        }
+
+    def normalize_portable_data(self, data):
+        profile = data.get("profile", data)
+        affirmations = data.get("affirmations", data)
+        gratitude = data.get("gratitude", {})
+        vision = data.get("vision", data)
+        entries = gratitude.get("entries", {})
+        if not entries and any(data.get(key) for key in ("gratitudeLines", "dailyIntention", "embodiedFeeling")):
+            entries[time.strftime("%Y-%m-%d")] = {
+                "gratitude": data.get("gratitudeLines", ""),
+                "dailyIntention": data.get("dailyIntention", ""),
+                "embodiedFeeling": data.get("embodiedFeeling", ""),
+            }
+        normalized_entries = {}
+        for key, value in entries.items():
+            normalized_entries[key] = {
+                "daily_intention": value.get("daily_intention", value.get("dailyIntention", "")),
+                "embodied_feeling": value.get("embodied_feeling", value.get("embodiedFeeling", "")),
+                "gratitude": value.get("gratitude", ""),
+            }
+        date_key = gratitude.get("currentDate") or (sorted(normalized_entries.keys())[-1] if normalized_entries else time.strftime("%Y-%m-%d"))
+        return {
+            "self_name": profile.get("selfName", profile.get("self_name", "")),
+            "sp_name": profile.get("spName", profile.get("sp_name", "SP")),
+            "intent_mode": profile.get("intentMode", profile.get("intent_mode", "general")),
+            "affirmation_mode": profile.get("affirmationMode", profile.get("affirmation_mode", "default")),
+            "affirmation_category": profile.get("affirmationCategory", profile.get("affirmation_category", "theme")),
+            "custom_text": affirmations.get("customLines", affirmations.get("custom_text", "")),
+            "recording_prompt": affirmations.get("recordingPrompt", affirmations.get("recording_prompt", "")),
+            "affirmation_index": affirmations.get("practiceIndex", affirmations.get("affirmation_index", 0)),
+            "affirmation_clicks": affirmations.get("practiceClicks", affirmations.get("affirmation_clicks", {})),
+            "gratitude_date": date_key,
+            "gratitude_entries": normalized_entries,
+            "goal": vision.get("goalText", vision.get("goal", "")),
+            "goal_files": vision.get("goalFiles", vision.get("goal_files", [])),
+        }
+
+    def apply_portable_data(self, data):
+        state = self.normalize_portable_data(data)
+        for key in ("self_name", "sp_name", "intent_mode", "affirmation_mode", "affirmation_category"):
+            self.vars[key].set(state[key])
+        self.custom_text.delete("1.0", "end")
+        self.custom_text.insert("1.0", state["custom_text"])
+        self.recording_prompt_text.delete("1.0", "end")
+        self.recording_prompt_text.insert("1.0", state["recording_prompt"])
+        self.affirmation_index = int(state["affirmation_index"] or 0)
+        self.affirmation_clicks = {str(key): int(value) for key, value in state["affirmation_clicks"].items()}
+        self.gratitude_entries = state["gratitude_entries"]
+        self.vars["gratitude_date"].set(state["gratitude_date"])
+        self.goal_text.delete("1.0", "end")
+        self.goal_text.insert("1.0", state["goal"])
+        self.goal_files = [Path(path) for path in state["goal_files"]]
+        self.goal_file_list.delete(0, "end")
+        for path in self.goal_files:
+            self.goal_file_list.insert("end", path.name)
+        self.sync_intent()
+        self.refresh_affirmation_practice()
+        self.refresh_gratitude_calendar()
+        self.load_gratitude_entry(state["gratitude_date"], silent=True)
+        self.save_affirmation_state(silent=True)
+        self.save_manifest_state()
+        self.gratitude_state_path.write_text(
+            json.dumps({"entries": self.gratitude_entries}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def export_portable_data(self):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            initialfile=f"subliminal-data-{time.strftime('%Y-%m-%d')}.json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        Path(path).write_text(
+            json.dumps(self.create_portable_data(), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        self.status.set("\u901a\u7528\u6570\u636e\u5df2\u5bfc\u51fa\u3002")
+
+    def import_portable_data(self):
+        path = filedialog.askopenfilename(filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            self.apply_portable_data(data)
+            self.status.set("\u901a\u7528\u6570\u636e\u5df2\u5bfc\u5165\u3002")
+        except Exception as exc:
+            messagebox.showerror("\u5bfc\u5165\u5931\u8d25", str(exc))
 
     def on_close(self):
         try:

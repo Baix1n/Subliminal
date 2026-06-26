@@ -215,6 +215,18 @@
                 </div>
               </div>
               <label>
+                <span>&#x65E5;&#x671F;</span>
+                <input name="gratitudeDate" type="date" />
+              </label>
+              <div class="text-actions">
+                <button class="ghost-button small" id="saveGratitudeButton" type="button">&#x4FDD;&#x5B58;&#x4ECA;&#x65E5;</button>
+                <button class="ghost-button small" id="loadGratitudeButton" type="button">&#x8BFB;&#x53D6;&#x65E5;&#x671F;</button>
+              </div>
+              <label>
+                <span>&#x65E5;&#x8BB0;&#x5217;&#x8868;</span>
+                <select name="gratitudeCalendar" size="5"></select>
+              </label>
+              <label>
                 <span>感恩日记</span>
                 <textarea name="gratitudeLines" rows="4" maxlength="1600" placeholder="今天我感谢……&#10;我已经拥有……&#10;让我安心的是……"></textarea>
               </label>
@@ -239,6 +251,8 @@
                 <div class="library-actions">
                   <button class="ghost-button small" id="saveWebStateButton" type="button">保存</button>
                   <button class="ghost-button small" id="loadWebStateButton" type="button">读取</button>
+                  <button class="ghost-button small" id="exportDataButton" type="button">&#x5BFC;&#x51FA;&#x901A;&#x7528;&#x6570;&#x636E;</button>
+                  <button class="ghost-button small" id="importDataButton" type="button">&#x5BFC;&#x5165;&#x901A;&#x7528;&#x6570;&#x636E;</button>
                 </div>
               </div>
 
@@ -256,7 +270,7 @@
               </div>
             </div>
 
-            <label class="wide affirmation-sp-field">
+            <label class="wide affirmation-sp-field hidden" id="affirmationSpField">
               <span>SP &#x540D;&#x5B57;</span>
               <input name="spNameMirror" value="SP" maxlength="40" placeholder="&#x7528;&#x4E8E;&#x66FF;&#x6362;&#x9ED8;&#x8BA4;&#x6587;&#x6848;&#x91CC;&#x7684; SP" />
             </label>
@@ -321,6 +335,7 @@
               </div>
             </div>
           </form>
+          <input id="importDataInput" type="file" accept="application/json,.json" hidden />
         </div>
 
         <aside class="panel output-panel">
