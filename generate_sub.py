@@ -82,15 +82,29 @@ def parse_frequencies(value):
     return frequencies
 
 
-def build_layered_voice_loop(voice, layer_count, sample_rate):
+def apply_voice_speed(source, speed):
+    if speed <= 0:
+        raise ValueError("人声倍速必须大于 0。")
+    if abs(speed - 1) < 0.0001:
+        return source
+    new_len = max(1, int(round(len(source) / speed)))
+    old_x = np.arange(len(source), dtype=np.float64)
+    new_x = np.arange(new_len, dtype=np.float64) * speed
+    return np.interp(new_x, old_x, source).astype(np.float32)
+
+
+def build_layered_voice_loop(voice, layer_count, sample_rate, voice_speed=1, stereo_width=1, layer_spacing=0.37):
     source = mono(voice).astype(np.float32)
+    source = apply_voice_speed(source, voice_speed)
     frames = len(source)
     if frames == 0:
         raise ValueError("人声文件为空。")
 
+    stereo_width = min(1, max(0, stereo_width))
+    layer_spacing = max(0.01, layer_spacing)
     layers = np.arange(layer_count, dtype=np.float64)
-    offsets = np.floor((layers * 0.37 + (np.mod(layers, 3) * 0.11)) * sample_rate).astype(np.int64) % frames
-    pan = np.zeros(layer_count, dtype=np.float64) if layer_count == 1 else (layers / (layer_count - 1)) * 2 - 1
+    offsets = np.floor((layers * layer_spacing + (np.mod(layers, 3) * layer_spacing * 0.31)) * sample_rate).astype(np.int64) % frames
+    pan = np.zeros(layer_count, dtype=np.float64) if layer_count == 1 else ((layers / (layer_count - 1)) * 2 - 1) * stereo_width
     left_gain = np.sqrt((1 - pan) / 2)
     right_gain = np.sqrt((1 + pan) / 2)
 
@@ -139,7 +153,14 @@ def generate(args, progress=None):
     output_path = output_dir / f"{args.name}.wav"
 
     voice = read_wav(Path(args.voice_file), args.sample_rate)
-    voice_left, voice_right = build_layered_voice_loop(voice, args.voice_layers, args.sample_rate)
+    voice_left, voice_right = build_layered_voice_loop(
+        voice,
+        args.voice_layers,
+        args.sample_rate,
+        args.voice_speed,
+        args.voice_stereo_width,
+        args.layer_spacing,
+    )
 
     music = read_wav(Path(args.music_file), args.sample_rate) if args.music_file else None
     noise = read_wav(Path(args.noise_file), args.sample_rate) if args.noise_file else None
@@ -197,6 +218,9 @@ def main():
     parser.add_argument("--minutes", type=float, default=10, help="输出时长，单位分钟。")
     parser.add_argument("--voice-layers", type=int, default=3, help="人声叠加层数，可以设为 10000。")
     parser.add_argument("--voice-volume", type=float, default=0.055, help="人声音量。上万层建议从 0.01 到 0.03 试。")
+    parser.add_argument("--voice-speed", type=float, default=1, help="人声倍速，0.5 表示半速，2 表示两倍速。")
+    parser.add_argument("--voice-stereo-width", type=float, default=1, help="人声声像宽度，0 为居中，1 为左右铺满。")
+    parser.add_argument("--layer-spacing", type=float, default=0.37, help="每层人声错开的秒数，越小越密。")
     parser.add_argument("--music-volume", type=float, default=0.8, help="背景音乐音量。")
     parser.add_argument("--noise-volume", type=float, default=0.35, help="白噪音音量。")
     parser.add_argument("--fade-seconds", type=float, default=6, help="淡入淡出秒数。")
@@ -211,6 +235,12 @@ def main():
         parser.error("--voice-layers 必须大于等于 1")
     if args.voice_layers > 100000:
         parser.error("--voice-layers 太高了，建议不超过 100000")
+    if args.voice_speed <= 0:
+        parser.error("--voice-speed 必须大于 0")
+    if args.voice_stereo_width < 0 or args.voice_stereo_width > 1:
+        parser.error("--voice-stereo-width 必须在 0 到 1 之间")
+    if args.layer_spacing <= 0:
+        parser.error("--layer-spacing 必须大于 0")
     if args.minutes <= 0:
         parser.error("--minutes 必须大于 0")
     if args.chunk_seconds <= 0:

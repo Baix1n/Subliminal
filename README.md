@@ -49,7 +49,26 @@ Windows / macOS / Linux 的启动脚本只放在 release 压缩包里。
 
 网页版和桌面版都是完整工作台。桌面版支持选择人声、背景音乐、白噪音 WAV 文件，并设置人声层数；也包含主题模式、SP 名字、默认肯定句、自定义肯定句、频率勾选、文案频率推荐、录音和开放音乐库搜索。
 
-桌面版的常用数值参数支持滑条调节，也支持直接输入数值。
+桌面版也包含显化助手：感恩日记、今日意图、已拥有感受、愿望板 / 目标确认，以及目标照片和文件附件。生成时会导出显化记录，并把附件复制到输出目录。
+
+桌面版的常用数值参数支持滑条调节，也支持直接输入数值，包括人声倍速、声像宽度和层间错位。
+
+内置制作方式预设：
+
+```text
+清晰可辨：低层数，适合检查人声和文案。
+轻度掩蔽：人声较低，藏在音乐和白噪音下面。
+高密度叠层：本地上万层，更接近社区 dense 风格。
+睡眠低声：更慢、更轻、更长淡入淡出。
+快速纹理：人声加速后作为细密纹理。
+```
+
+制作参数参考：
+
+```text
+声像宽度：0 更居中，1 更左右铺开。
+层间错位：数值越小，人声层越密；数值越大，每层越容易分开。
+```
 
 桌面版额外支持本地上万层生成。桌面版音乐库会优先搜索可直接用于本地生成的 WAV 音频；其他格式可以先转成 WAV。
 
@@ -70,6 +89,9 @@ python generate_sub.py \
   --minutes 10 \
   --voice-layers 10000 \
   --voice-volume 0.02 \
+  --voice-speed 1.25 \
+  --voice-stereo-width 1 \
+  --layer-spacing 0.09 \
   --name my_sp_sub
 ```
 
@@ -88,6 +110,9 @@ outputs/my_sp_sub_affirmations.txt
 --noise-file noise.wav
 --voice-layers 10000
 --voice-volume 0.02
+--voice-speed 1.25
+--voice-stereo-width 1
+--layer-spacing 0.09
 --music-volume 0.8
 --noise-volume 0.35
 --frequencies 528,639

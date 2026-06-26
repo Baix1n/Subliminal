@@ -3,6 +3,10 @@ __pycache__/
 outputs/
 releases-*/
 start_windows.bat
+run_local_windows.bat
 start_mac_linux.sh
 python-*.exe
 upload-source/
+manifest_board.json
+affirmation_practice.json
+gratitude_journal.json

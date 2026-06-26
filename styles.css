@@ -74,6 +74,30 @@ audio {
   border-bottom: 1px solid var(--line);
 }
 
+.page-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 16px;
+}
+
+.page-tab {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 14px;
+  background: #fbfcfe;
+  color: #344054;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.page-tab.active {
+  border-color: rgba(15, 118, 110, 0.35);
+  background: #e8f5f2;
+  color: var(--accent-dark);
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: var(--accent);
@@ -115,6 +139,17 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   padding-top: 18px;
+}
+
+.page-section {
+  display: none;
+  grid-column: 1 / -1;
+}
+
+.page-section.active {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 label {
@@ -287,7 +322,9 @@ textarea:focus {
   line-height: 1.5;
 }
 
-.frequency-panel {
+.frequency-panel,
+.energy-panel,
+.web-helper-panel {
   display: grid;
   gap: 12px;
   padding: 14px;
@@ -305,7 +342,8 @@ textarea:focus {
   background: #fbfcfe;
 }
 
-.frequency-header {
+.frequency-header,
+.energy-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -313,7 +351,8 @@ textarea:focus {
 }
 
 .frequency-header span,
-.library-header span {
+.library-header span,
+.energy-header span {
   display: block;
   margin-bottom: 4px;
   color: #344054;
@@ -322,7 +361,8 @@ textarea:focus {
 }
 
 .frequency-header p,
-.library-header p {
+.library-header p,
+.energy-header p {
   margin: 0;
   color: var(--muted);
   font-size: 0.84rem;
@@ -370,6 +410,39 @@ textarea:focus {
 
 .library-message {
   margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.practice-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.practice-line {
+  min-height: 44px;
+  margin: 0;
+  color: #243447;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.practice-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.goal-file-list {
+  margin: -4px 0 0;
   color: var(--muted);
   font-size: 0.84rem;
   line-height: 1.45;
@@ -613,7 +686,8 @@ audio {
 
 @media (max-width: 900px) {
   .workspace,
-  .control-grid {
+  .control-grid,
+  .page-section.active {
     grid-template-columns: 1fr;
   }
 

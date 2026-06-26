@@ -8,6 +8,13 @@ const musicSearchButton = document.querySelector("#musicSearchButton");
 const frequencyNoiseButton = document.querySelector("#frequencyNoiseButton");
 const fillDefaultTextButton = document.querySelector("#fillDefaultTextButton");
 const clearTextButton = document.querySelector("#clearTextButton");
+const saveWebStateButton = document.querySelector("#saveWebStateButton");
+const loadWebStateButton = document.querySelector("#loadWebStateButton");
+const saveVisionButton = document.querySelector("#saveVisionButton");
+const loadVisionButton = document.querySelector("#loadVisionButton");
+const refreshPracticeButton = document.querySelector("#refreshPracticeButton");
+const nextAffirmationButton = document.querySelector("#nextAffirmationButton");
+const countAffirmationButton = document.querySelector("#countAffirmationButton");
 const recordButton = document.querySelector("#recordButton");
 const stopButton = document.querySelector("#stopButton");
 const audioPlayer = document.querySelector("#audioPlayer");
@@ -18,8 +25,15 @@ const outputTitle = document.querySelector("#outputTitle");
 const recommendationText = document.querySelector("#recommendationText");
 const musicResults = document.querySelector("#musicResults");
 const recorderStatus = document.querySelector("#recorderStatus");
+const currentAffirmation = document.querySelector("#currentAffirmation");
+const currentAffirmationCount = document.querySelector("#currentAffirmationCount");
+const totalAffirmationCount = document.querySelector("#totalAffirmationCount");
+const goalFileList = document.querySelector("#goalFileList");
 const spField = document.querySelector("#spField");
 const intentNote = document.querySelector("#intentNote");
+const productionPreset = document.querySelector("#productionPreset");
+const pageTabs = [...document.querySelectorAll(".page-tab")];
+const pageSections = [...document.querySelectorAll("[data-page-section]")];
 const canvas = document.querySelector("#waveCanvas");
 const ctx = canvas.getContext("2d");
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -33,11 +47,18 @@ let selectedLibraryMusicBlob = null;
 let selectedLibraryNoiseBlob = null;
 let selectedLibraryMusicName = "";
 let selectedLibraryNoiseName = "";
+let practiceLines = [];
+let practiceIndex = 0;
+let practiceClicks = {};
+const webStateKey = "manifest-sub-studio-web-state-v1";
 
 const rangeBindings = [
   ["minutes", "minutesOut"],
   ["voiceVolume", "voiceVolumeOut"],
   ["voiceLayers", "voiceLayersOut"],
+  ["voiceSpeed", "voiceSpeedOut"],
+  ["voiceStereoWidth", "voiceStereoWidthOut"],
+  ["layerSpacing", "layerSpacingOut"],
   ["musicVolume", "musicVolumeOut"],
   ["noiseVolume", "noiseVolumeOut"],
   ["fadeSeconds", "fadeOut"],
@@ -136,6 +157,14 @@ const intentNotes = {
   study: "学业 / 考试模式适合学习专注、成绩、考试、录取、论文和 GPA 主题。",
 };
 
+const productionPresets = {
+  clear: { voiceLayers: 3, voiceVolume: 0.055, voiceSpeed: 1, voiceStereoWidth: 0.35, layerSpacing: 0.42, musicVolume: 0.72, noiseVolume: 0.18, fadeSeconds: 6, toneVolume: 0 },
+  masked: { voiceLayers: 12, voiceVolume: 0.04, voiceSpeed: 1.1, voiceStereoWidth: 0.75, layerSpacing: 0.23, musicVolume: 0.8, noiseVolume: 0.35, fadeSeconds: 8, toneVolume: 0 },
+  dense: { voiceLayers: 30, voiceVolume: 0.03, voiceSpeed: 1.25, voiceStereoWidth: 1, layerSpacing: 0.09, musicVolume: 0.78, noiseVolume: 0.4, fadeSeconds: 8, toneVolume: 0 },
+  sleep: { voiceLayers: 8, voiceVolume: 0.025, voiceSpeed: 0.85, voiceStereoWidth: 0.55, layerSpacing: 0.5, musicVolume: 0.55, noiseVolume: 0.45, fadeSeconds: 12, toneVolume: 0 },
+  texture: { voiceLayers: 20, voiceVolume: 0.025, voiceSpeed: 1.5, voiceStereoWidth: 1, layerSpacing: 0.06, musicVolume: 0.76, noiseVolume: 0.34, fadeSeconds: 6, toneVolume: 0 },
+};
+
 for (const [name, outputId] of rangeBindings) {
   const input = form.elements[name];
   const output = document.querySelector(`#${outputId}`);
@@ -189,10 +218,50 @@ function getAffirmationText() {
     .join("\n");
 }
 
+function getEnergyJournalText() {
+  const lines = [];
+  const gratitude = form.elements.gratitudeLines.value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (gratitude.length) lines.push("\u3010\u611f\u6069\u65e5\u8bb0\u3011", ...gratitude);
+  const intention = form.elements.dailyIntention.value.trim();
+  if (intention) lines.push("\u3010\u4eca\u65e5\u610f\u56fe\u3011", intention);
+  const feeling = form.elements.embodiedFeeling.value.trim();
+  if (feeling) lines.push("\u3010\u5df2\u62e5\u6709\u611f\u53d7\u3011", feeling);
+  const goal = form.elements.goalText?.value.trim();
+  if (goal) lines.push("\u3010\u613f\u671b\u677f / \u76ee\u6807\u786e\u8ba4\u3011", goal);
+  const goalFiles = Array.from(form.elements.goalFiles?.files || []).map((file) => file.name);
+  if (goalFiles.length) lines.push("\u3010\u76ee\u6807\u6587\u4ef6\u540d\u3011", ...goalFiles);
+  return lines.join("\n");
+}
+
+function getExportText() {
+  return [getAffirmationText(), getEnergyJournalText()].filter(Boolean).join("\n\n");
+}
+
 function syncIntentMode() {
   const isSp = form.elements.intentMode.value === "sp";
   spField.classList.toggle("hidden", !isSp);
   intentNote.textContent = intentNotes[form.elements.intentMode.value] || intentNotes.general;
+}
+
+function applyProductionPreset() {
+  const preset = productionPresets[productionPreset.value];
+  if (!preset) return;
+  for (const [name, value] of Object.entries(preset)) {
+    const input = form.elements[name];
+    if (!input) continue;
+    input.value = String(value);
+    input.dispatchEvent(new Event("input"));
+  }
+  setMessage("已应用制作方式预设，可以继续微调。", "success");
+}
+
+function ensureToneVolume() {
+  if (Number(form.elements.toneVolume.value) > 0) return;
+  form.elements.toneVolume.value = "0.006";
+  form.elements.toneVolume.dispatchEvent(new Event("input"));
 }
 
 function renderedDefaultAffirmations() {
@@ -203,6 +272,135 @@ function renderedDefaultAffirmations() {
     .map((line) => line.replaceAll("{selfName}", selfName).replaceAll("{spName}", spName))
     .join("\n");
 }
+
+
+function refreshPractice() {
+  practiceLines = getAffirmationText()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!practiceLines.length) {
+    practiceIndex = 0;
+    currentAffirmation.textContent = "\u8fd8\u6ca1\u6709\u80af\u5b9a\u8bed\u3002";
+    currentAffirmationCount.textContent = "\u5f53\u524d\u53e5 0 \u6b21";
+    totalAffirmationCount.textContent = "\u603b\u8ba1 0 \u6b21";
+    return;
+  }
+  practiceIndex %= practiceLines.length;
+  showCurrentPracticeLine();
+}
+
+function showCurrentPracticeLine() {
+  if (!practiceLines.length) refreshPractice();
+  if (!practiceLines.length) return;
+  const line = practiceLines[practiceIndex];
+  const currentCount = practiceClicks[line] || 0;
+  const total = Object.values(practiceClicks).reduce((sum, value) => sum + Number(value || 0), 0);
+  currentAffirmation.textContent = line;
+  currentAffirmationCount.textContent = `\u5f53\u524d\u53e5 ${currentCount} \u6b21`;
+  totalAffirmationCount.textContent = `\u603b\u8ba1 ${total} \u6b21`;
+}
+
+function nextPracticeLine() {
+  refreshPractice();
+  if (!practiceLines.length) return;
+  practiceIndex = (practiceIndex + 1) % practiceLines.length;
+  showCurrentPracticeLine();
+  saveWebState(true);
+}
+
+function countPracticeLine() {
+  refreshPractice();
+  if (!practiceLines.length) return;
+  const line = practiceLines[practiceIndex];
+  practiceClicks[line] = (practiceClicks[line] || 0) + 1;
+  showCurrentPracticeLine();
+  saveWebState(true);
+}
+
+function updateGoalFileList(namesFromStorage = null) {
+  const names = namesFromStorage || Array.from(form.elements.goalFiles?.files || []).map((file) => file.name);
+  goalFileList.textContent = names.length ? names.join(" / ") : "\u5c1a\u672a\u9009\u62e9\u76ee\u6807\u6587\u4ef6\u3002";
+}
+
+function saveWebState(silent = false) {
+  const state = {
+    selfName: form.elements.selfName.value,
+    spName: form.elements.spName.value,
+    intentMode: form.elements.intentMode.value,
+    affirmationMode: form.elements.affirmationMode.value,
+    customLines: form.elements.customLines.value,
+    gratitudeLines: form.elements.gratitudeLines.value,
+    dailyIntention: form.elements.dailyIntention.value,
+    embodiedFeeling: form.elements.embodiedFeeling.value,
+    goalText: form.elements.goalText?.value || "",
+    goalFileNames: Array.from(form.elements.goalFiles?.files || []).map((file) => file.name),
+    practiceIndex,
+    practiceClicks,
+  };
+  localStorage.setItem(webStateKey, JSON.stringify(state));
+  if (!silent) setMessage("\u5df2\u4fdd\u5b58\u5230\u6d4f\u89c8\u5668\u672c\u5730\u3002", "success");
+}
+
+function loadWebState(silent = false) {
+  const raw = localStorage.getItem(webStateKey);
+  if (!raw) {
+    if (!silent) setMessage("\u8fd8\u6ca1\u6709\u7f51\u9875\u672c\u5730\u4fdd\u5b58\u3002", "error");
+    return;
+  }
+  try {
+    const state = JSON.parse(raw);
+    for (const key of ["selfName", "spName", "intentMode", "affirmationMode", "customLines", "gratitudeLines", "dailyIntention", "embodiedFeeling", "goalText"]) {
+      if (form.elements[key] && state[key] !== undefined) form.elements[key].value = state[key];
+    }
+    practiceIndex = Number(state.practiceIndex || 0);
+    practiceClicks = state.practiceClicks || {};
+    updateGoalFileList(state.goalFileNames || []);
+    syncIntentMode();
+    refreshPractice();
+    if (!silent) setMessage("\u5df2\u4ece\u6d4f\u89c8\u5668\u672c\u5730\u8bfb\u53d6\u3002", "success");
+  } catch (error) {
+    setMessage("\u8bfb\u53d6\u5931\u8d25\uff0c\u672c\u5730\u8bb0\u5f55\u53ef\u80fd\u635f\u574f\u3002", "error");
+  }
+}
+
+function bindWebHelperEvents() {
+  saveWebStateButton.addEventListener("click", () => saveWebState(false));
+  loadWebStateButton.addEventListener("click", () => loadWebState(false));
+  saveVisionButton.addEventListener("click", () => saveWebState(false));
+  loadVisionButton.addEventListener("click", () => loadWebState(false));
+  refreshPracticeButton.addEventListener("click", refreshPractice);
+  nextAffirmationButton.addEventListener("click", nextPracticeLine);
+  countAffirmationButton.addEventListener("click", countPracticeLine);
+  form.elements.goalFiles.addEventListener("change", () => {
+    updateGoalFileList();
+    saveWebState(true);
+  });
+  ["customLines", "gratitudeLines", "dailyIntention", "embodiedFeeling", "goalText"].forEach((name) => {
+    form.elements[name]?.addEventListener("input", () => saveWebState(true));
+  });
+  if (form.elements.affirmationMode?.forEach) {
+    form.elements.affirmationMode.forEach((input) => input.addEventListener("change", () => {
+      refreshPractice();
+      saveWebState(true);
+    }));
+  }
+}
+
+function showPage(pageName) {
+  pageTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.pageTarget === pageName));
+  pageSections.forEach((section) => section.classList.toggle("active", section.dataset.pageSection === pageName));
+}
+
+pageTabs.forEach((tab) => {
+  tab.addEventListener("click", () => showPage(tab.dataset.pageTarget));
+});
+
+bindWebHelperEvents();
+syncIntentMode();
+loadWebState(true);
+refreshPractice();
+
 
 async function readArrayBuffer(fileOrBlob) {
   if (!fileOrBlob) throw new Error("请选择音频文件。");
@@ -464,6 +662,7 @@ function suggestFrequencyNoiseKeyword() {
   const selected = getSelectedFrequencies();
   const fallback = analyzeFrequencyKeywords().recommended;
   const frequency = selected[0] || fallback[0] || 528;
+  ensureToneVolume();
   const query = `${frequency} Hz`;
   form.elements.libraryType.value = "noise";
   form.elements.musicQuery.value = query;
@@ -471,7 +670,7 @@ function suggestFrequencyNoiseKeyword() {
 }
 
 function analyzeFrequencyKeywords() {
-  const text = `${getAffirmationText()}\n${form.elements.selfName.value}\n${form.elements.spName.value}`.toLowerCase();
+  const text = `${getAffirmationText()}\n${getEnergyJournalText()}\n${form.elements.selfName.value}\n${form.elements.spName.value}`.toLowerCase();
   const scores = frequencyThemes.map((theme) => {
     const hits = theme.keywords.filter((keyword) => text.includes(keyword.toLowerCase()));
     return { ...theme, hits, score: hits.length };
@@ -494,6 +693,7 @@ function applyRecommendedFrequencies() {
     ? topThemes.map((theme) => `${theme.label}(${theme.hits.slice(0, 3).join("、")})`).join(" / ")
     : "未匹配到明显主题，使用通用组合";
   recommendationText.textContent = `推荐：${recommended.join(" / ")} Hz。匹配：${themeText}。`;
+  ensureToneVolume();
   setMessage("已根据文案推荐频率。", "success");
 }
 
@@ -506,21 +706,24 @@ function frequencySample(frequencies, frameIndex, sampleRate) {
   return tone / frequencies.length;
 }
 
-function buildLayeredVoiceLoops(buffer, sampleRate, layerCount, maxFrames) {
-  const loopFrames = Math.max(1, Math.min(Math.ceil(buffer.duration * sampleRate), maxFrames));
+function buildLayeredVoiceLoops(buffer, sampleRate, layerCount, voiceSpeed, stereoWidth, layerSpacing, maxFrames) {
+  const safeSpeed = Math.max(0.25, voiceSpeed || 1);
+  const width = Math.max(0, Math.min(1, stereoWidth ?? 1));
+  const spacing = Math.max(0.01, layerSpacing || 0.37);
+  const loopFrames = Math.max(1, Math.min(Math.ceil((buffer.duration * sampleRate) / safeSpeed), maxFrames));
   const source = new Float32Array(loopFrames);
   const left = new Float32Array(loopFrames);
   const right = new Float32Array(loopFrames);
 
   for (let i = 0; i < loopFrames; i += 1) {
-    const sourceIndex = Math.floor((i * buffer.sampleRate) / sampleRate);
+    const sourceIndex = Math.floor((i * buffer.sampleRate * safeSpeed) / sampleRate);
     source[i] = mixLoopedChannel(buffer, sourceIndex, 0);
   }
 
   for (let layer = 0; layer < layerCount; layer += 1) {
-    const offsetSeconds = (layer * 0.37) + ((layer % 3) * 0.11);
+    const offsetSeconds = (layer * spacing) + ((layer % 3) * spacing * 0.31);
     const offsetFrames = Math.floor(offsetSeconds * sampleRate) % loopFrames;
-    const pan = layerCount === 1 ? 0 : (layer / (layerCount - 1)) * 2 - 1;
+    const pan = (layerCount === 1 ? 0 : (layer / (layerCount - 1)) * 2 - 1) * width;
     const leftGain = Math.sqrt((1 - pan) / 2);
     const rightGain = Math.sqrt((1 + pan) / 2);
 
@@ -601,10 +804,13 @@ async function generateInBrowser() {
   const noiseVolume = Number(form.elements.noiseVolume.value);
   const voiceVolume = Number(form.elements.voiceVolume.value);
   const voiceLayers = Number(form.elements.voiceLayers.value);
+  const voiceSpeed = Number(form.elements.voiceSpeed.value);
+  const voiceStereoWidth = Number(form.elements.voiceStereoWidth.value);
+  const layerSpacing = Number(form.elements.layerSpacing.value);
   const toneVolume = Number(form.elements.toneVolume.value);
   const frequencies = getSelectedFrequencies();
   const fadeFrames = Math.floor(Number(form.elements.fadeSeconds.value) * sampleRate);
-  const voiceLoops = buildLayeredVoiceLoops(voiceBuffer, sampleRate, voiceLayers, totalFrames);
+  const voiceLoops = buildLayeredVoiceLoops(voiceBuffer, sampleRate, voiceLayers, voiceSpeed, voiceStereoWidth, layerSpacing, totalFrames);
   const left = new Float32Array(totalFrames);
   const right = new Float32Array(totalFrames);
 
@@ -646,7 +852,7 @@ function enableResult(wavBlob) {
   revokeActiveUrls();
   const name = safeFileName(form.elements.name.value);
   activeAudioUrl = URL.createObjectURL(wavBlob);
-  const textBlob = new Blob([getAffirmationText() + "\n"], { type: "text/plain;charset=utf-8" });
+  const textBlob = new Blob([getExportText() + "\n"], { type: "text/plain;charset=utf-8" });
   activeTextUrl = URL.createObjectURL(textBlob);
 
   audioPlayer.src = activeAudioUrl;
@@ -735,6 +941,14 @@ form.elements.noiseFile.addEventListener("change", () => {
 });
 
 recommendButton.addEventListener("click", applyRecommendedFrequencies);
+document.querySelectorAll('input[name="presetFrequency"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    if (input.checked) ensureToneVolume();
+  });
+});
+form.elements.customFrequencies.addEventListener("input", () => {
+  if (form.elements.customFrequencies.value.trim()) ensureToneVolume();
+});
 musicSuggestButton.addEventListener("click", suggestMusicKeyword);
 musicSearchButton.addEventListener("click", searchOpenverseMusic);
 frequencyNoiseButton.addEventListener("click", () => {
@@ -742,6 +956,7 @@ frequencyNoiseButton.addEventListener("click", () => {
   searchOpenverseMusic();
 });
 form.elements.intentMode.addEventListener("change", syncIntentMode);
+productionPreset.addEventListener("change", applyProductionPreset);
 fillDefaultTextButton.addEventListener("click", () => {
   form.elements.customLines.value = renderedDefaultAffirmations();
   form.elements.affirmationMode.value = "custom";
@@ -751,7 +966,6 @@ clearTextButton.addEventListener("click", () => {
   form.elements.customLines.value = "";
   setMessage("已清空自定义文案。");
 });
-syncIntentMode();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

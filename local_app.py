@@ -3,6 +3,7 @@ import http.server
 import json
 import queue
 import re
+import shutil
 import socket
 import socketserver
 import time
@@ -88,6 +89,14 @@ PRESET_FREQUENCIES = [
     (852, "直觉/丰盛"),
 ]
 
+PRODUCTION_PRESETS = {
+    "清晰可辨": {"voice_layers": 3, "voice_volume": 0.055, "voice_speed": 1, "voice_stereo_width": 0.35, "layer_spacing": 0.42, "music_volume": 0.72, "noise_volume": 0.18, "fade_seconds": 6, "tone_volume": 0},
+    "轻度掩蔽": {"voice_layers": 12, "voice_volume": 0.04, "voice_speed": 1.1, "voice_stereo_width": 0.75, "layer_spacing": 0.23, "music_volume": 0.8, "noise_volume": 0.35, "fade_seconds": 8, "tone_volume": 0},
+    "高密度叠层": {"voice_layers": 10000, "voice_volume": 0.02, "voice_speed": 1.15, "voice_stereo_width": 1, "layer_spacing": 0.09, "music_volume": 0.78, "noise_volume": 0.4, "fade_seconds": 8, "tone_volume": 0},
+    "睡眠低声": {"voice_layers": 80, "voice_volume": 0.018, "voice_speed": 0.85, "voice_stereo_width": 0.55, "layer_spacing": 0.5, "music_volume": 0.55, "noise_volume": 0.45, "fade_seconds": 12, "tone_volume": 0},
+    "快速纹理": {"voice_layers": 300, "voice_volume": 0.018, "voice_speed": 1.5, "voice_stereo_width": 1, "layer_spacing": 0.06, "music_volume": 0.76, "noise_volume": 0.34, "fade_seconds": 6, "tone_volume": 0},
+}
+
 
 class QuietServer(socketserver.TCPServer):
     allow_reuse_address = True
@@ -106,6 +115,14 @@ class LocalApp(tk.Tk):
         self.recording_chunks = []
         self.web_server = None
         self.library_results = []
+        self.goal_files = []
+        self.manifest_state_path = Path.cwd() / "manifest_board.json"
+        self.affirmation_state_path = Path.cwd() / "affirmation_practice.json"
+        self.gratitude_state_path = Path.cwd() / "gratitude_journal.json"
+        self.affirmation_lines = []
+        self.affirmation_index = 0
+        self.affirmation_clicks = {}
+        self.gratitude_entries = {}
 
         self.vars = {
             "voice_file": tk.StringVar(),
@@ -120,12 +137,19 @@ class LocalApp(tk.Tk):
             "minutes": tk.StringVar(value="10"),
             "voice_layers": tk.StringVar(value="10000"),
             "voice_volume": tk.StringVar(value="0.02"),
+            "voice_speed": tk.StringVar(value="1.00"),
+            "voice_stereo_width": tk.StringVar(value="1.00"),
+            "layer_spacing": tk.StringVar(value="0.37"),
             "music_volume": tk.StringVar(value="0.8"),
             "noise_volume": tk.StringVar(value="0.35"),
             "fade_seconds": tk.StringVar(value="6"),
             "custom_frequencies": tk.StringVar(value=""),
             "tone_volume": tk.StringVar(value="0"),
             "sample_rate": tk.StringVar(value="44100"),
+            "production_preset": tk.StringVar(value="手动调整"),
+            "daily_intention": tk.StringVar(value=""),
+            "embodied_feeling": tk.StringVar(value=""),
+            "gratitude_date": tk.StringVar(value=time.strftime("%Y-%m-%d")),
             "library_query": tk.StringVar(value="romantic ambient"),
             "library_type": tk.StringVar(value="music"),
         }
@@ -135,7 +159,11 @@ class LocalApp(tk.Tk):
 
         self.configure_style()
         self.build_ui()
+        self.load_manifest_state(silent=True)
+        self.load_affirmation_state(silent=True)
+        self.load_gratitude_state(silent=True)
         self.sync_intent()
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.after(100, self.poll_events)
 
     def configure_style(self):
@@ -152,77 +180,184 @@ class LocalApp(tk.Tk):
         root = ttk.Frame(self, padding=18)
         root.pack(fill="both", expand=True)
         root.columnconfigure(0, weight=1)
-        root.rowconfigure(2, weight=1)
+        root.rowconfigure(1, weight=1)
 
         header = ttk.Frame(root)
         header.grid(row=0, column=0, sticky="ew", pady=(0, 14))
         header.columnconfigure(0, weight=1)
-        ttk.Label(header, text="本地 Subliminal 工作台", style="Title.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(header, text="桌面版和网页版都是完整工作台；桌面版额外支持本地高层数生成。").grid(row=1, column=0, sticky="w", pady=(4, 0))
-        ttk.Button(header, text="打开网页版", command=self.open_web_version).grid(row=0, column=1, rowspan=2, sticky="e")
+        ttk.Label(header, text="\u672c\u5730 Subliminal \u663e\u5316\u52a9\u624b", style="Title.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(header, text="\u5236\u4f5c\u5de5\u4f5c\u53f0\u7ba1\u7406\u97f3\u9891\u3001\u9891\u7387\u548c\u7d20\u6750\uff1b\u80af\u5b9a\u8bed\u3001\u611f\u6069\u65e5\u8bb0\u548c\u613f\u671b\u677f\u4fdd\u6301\u72ec\u7acb\u6a21\u5757\u3002").grid(row=1, column=0, sticky="w", pady=(4, 0))
+        ttk.Button(header, text="\u6253\u5f00\u7f51\u9875\u7248", command=self.open_web_version).grid(row=0, column=1, rowspan=2, sticky="e")
 
-        files = ttk.LabelFrame(root, text="音频文件", style="Section.TLabelframe")
-        files.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        tabs = ttk.Notebook(root)
+        tabs.grid(row=1, column=0, sticky="nsew")
+        self.build_workbench_tab(tabs)
+        self.build_affirmation_tab(tabs)
+        self.build_gratitude_tab(tabs)
+        self.build_vision_tab(tabs)
+
+    def build_workbench_tab(self, tabs):
+        frame = ttk.Frame(tabs, padding=12)
+        tabs.add(frame, text="\u5236\u4f5c\u5de5\u4f5c\u53f0")
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)
+        frame.rowconfigure(1, weight=1)
+
+        files = ttk.LabelFrame(frame, text="\u97f3\u9891\u6587\u4ef6", style="Section.TLabelframe")
+        files.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
         files.columnconfigure(1, weight=1)
-        self.file_row(files, 0, "人声 WAV（必填）", "voice_file", self.pick_wav)
-        self.file_row(files, 1, "背景音乐 WAV", "music_file", self.pick_wav)
-        self.file_row(files, 2, "白噪音 / 频率音 WAV", "noise_file", self.pick_wav)
-        self.file_row(files, 3, "输出文件夹", "output_dir", self.pick_folder)
+        self.file_row(files, 0, "\u4eba\u58f0 WAV\uff08\u5fc5\u586b\uff09", "voice_file", self.pick_wav)
+        self.file_row(files, 1, "\u80cc\u666f\u97f3\u4e50 WAV", "music_file", self.pick_wav)
+        self.file_row(files, 2, "\u767d\u566a\u97f3 / \u9891\u7387\u97f3 WAV", "noise_file", self.pick_wav)
+        self.file_row(files, 3, "\u8f93\u51fa\u6587\u4ef6\u5939", "output_dir", self.pick_folder)
 
-        body = ttk.PanedWindow(root, orient="horizontal")
-        body.grid(row=2, column=0, sticky="nsew")
-        left = ttk.Frame(body, padding=(0, 0, 8, 0))
-        right = ttk.Frame(body, padding=(8, 0, 0, 0))
-        body.add(left, weight=1)
-        body.add(right, weight=1)
+        left = ttk.Frame(frame, padding=(0, 0, 8, 0))
+        right = ttk.Frame(frame, padding=(8, 0, 0, 0))
+        left.grid(row=1, column=0, sticky="nsew")
+        right.grid(row=1, column=1, sticky="nsew")
         left.columnconfigure(0, weight=1)
         right.columnconfigure(0, weight=1)
         right.rowconfigure(0, weight=1)
 
-        main_params = ttk.LabelFrame(left, text="混音参数", style="Section.TLabelframe")
+        main_params = ttk.LabelFrame(left, text="\u6df7\u97f3\u53c2\u6570", style="Section.TLabelframe")
         main_params.grid(row=0, column=0, sticky="ew")
         main_params.columnconfigure(1, weight=1)
-        self.slider(main_params, 0, "时长", "minutes", 1, 60, 1, " 分钟", as_int=True)
-        self.slider(main_params, 1, "人声层数", "voice_layers", 1, 50000, 1, " 层", as_int=True)
-        self.slider(main_params, 2, "人声音量", "voice_volume", 0, 0.16, 0.001, "", precision=3)
-        self.slider(main_params, 3, "音乐音量", "music_volume", 0, 1, 0.01, "", precision=2)
-        self.slider(main_params, 4, "白噪音音量", "noise_volume", 0, 1, 0.01, "", precision=2)
-        self.slider(main_params, 5, "淡入淡出", "fade_seconds", 0, 30, 1, " 秒", as_int=True)
+        ttk.Label(main_params, text="\u5236\u4f5c\u65b9\u5f0f").grid(row=0, column=0, sticky="w", padx=12, pady=8)
+        preset_box = ttk.Combobox(main_params, textvariable=self.vars["production_preset"], values=("\u624b\u52a8\u8c03\u6574", *PRODUCTION_PRESETS.keys()), state="readonly")
+        preset_box.grid(row=0, column=1, columnspan=2, sticky="ew", padx=8, pady=8)
+        preset_box.bind("<<ComboboxSelected>>", lambda _event: self.apply_production_preset())
+        self.slider(main_params, 1, "\u65f6\u957f", "minutes", 1, 60, 1, " \u5206\u949f", as_int=True)
+        self.slider(main_params, 2, "\u4eba\u58f0\u5c42\u6570", "voice_layers", 1, 50000, 1, " \u5c42", as_int=True)
+        self.slider(main_params, 3, "\u4eba\u58f0\u97f3\u91cf", "voice_volume", 0, 0.16, 0.001, "", precision=3)
+        self.slider(main_params, 4, "\u4eba\u58f0\u500d\u901f", "voice_speed", 0.5, 2, 0.05, " x", precision=2)
+        self.slider(main_params, 5, "\u58f0\u50cf\u5bbd\u5ea6", "voice_stereo_width", 0, 1, 0.05, "", precision=2)
+        self.slider(main_params, 6, "\u5c42\u95f4\u9519\u4f4d", "layer_spacing", 0.03, 0.8, 0.01, " \u79d2", precision=2)
+        self.slider(main_params, 7, "\u97f3\u4e50\u97f3\u91cf", "music_volume", 0, 1, 0.01, "", precision=2)
+        self.slider(main_params, 8, "\u767d\u566a\u97f3\u97f3\u91cf", "noise_volume", 0, 1, 0.01, "", precision=2)
+        self.slider(main_params, 9, "\u6de1\u5165\u6de1\u51fa", "fade_seconds", 0, 30, 1, " \u79d2", as_int=True)
 
-        presets = ttk.LabelFrame(left, text="层数预设", style="Section.TLabelframe")
+        presets = ttk.LabelFrame(left, text="\u5c42\u6570\u9884\u8bbe", style="Section.TLabelframe")
         presets.grid(row=1, column=0, sticky="ew", pady=(12, 0))
         presets.columnconfigure((0, 1, 2), weight=1)
-        ttk.Button(presets, text="清晰 3 层", command=lambda: self.apply_preset(3, 0.055)).grid(row=0, column=0, sticky="ew", padx=8, pady=10)
-        ttk.Button(presets, text="高密度 100 层", command=lambda: self.apply_preset(100, 0.035)).grid(row=0, column=1, sticky="ew", padx=8, pady=10)
-        ttk.Button(presets, text="上万层 10000", command=lambda: self.apply_preset(10000, 0.02)).grid(row=0, column=2, sticky="ew", padx=8, pady=10)
+        ttk.Button(presets, text="\u6e05\u6670 3 \u5c42", command=lambda: self.apply_preset(3, 0.055)).grid(row=0, column=0, sticky="ew", padx=8, pady=10)
+        ttk.Button(presets, text="\u9ad8\u5bc6\u5ea6 100 \u5c42", command=lambda: self.apply_preset(100, 0.035)).grid(row=0, column=1, sticky="ew", padx=8, pady=10)
+        ttk.Button(presets, text="\u4e0a\u4e07\u5c42 10000", command=lambda: self.apply_preset(10000, 0.02)).grid(row=0, column=2, sticky="ew", padx=8, pady=10)
 
-        output = ttk.LabelFrame(left, text="输出", style="Section.TLabelframe")
-        output.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        workbench_tabs = ttk.Notebook(right)
+        workbench_tabs.grid(row=0, column=0, sticky="nsew")
+        self.build_output_tab(workbench_tabs)
+        self.build_frequency_tab(workbench_tabs)
+        self.build_library_tab(workbench_tabs)
+
+    def build_output_tab(self, tabs):
+        frame = ttk.Frame(tabs, padding=12)
+        tabs.add(frame, text="\u8f93\u51fa / \u751f\u6210")
+        frame.columnconfigure(0, weight=1)
+
+        output = ttk.LabelFrame(frame, text="\u8f93\u51fa", style="Section.TLabelframe")
+        output.grid(row=0, column=0, sticky="ew")
         output.columnconfigure(1, weight=1)
-        self.entry(output, 0, "文件名", "name")
+        self.entry(output, 0, "\u6587\u4ef6\u540d", "name")
         self.sample_rate(output, 1)
 
-        actions = ttk.LabelFrame(left, text="生成", style="Section.TLabelframe")
-        actions.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        actions = ttk.LabelFrame(frame, text="\u751f\u6210", style="Section.TLabelframe")
+        actions.grid(row=1, column=0, sticky="ew", pady=(12, 0))
         actions.columnconfigure(0, weight=1)
         self.progress = ttk.Progressbar(actions, mode="determinate", maximum=100)
         self.progress.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 8))
-        self.generate_button = ttk.Button(actions, text="生成 WAV", style="Generate.TButton", command=self.start_generate)
+        self.generate_button = ttk.Button(actions, text="\u751f\u6210 WAV", style="Generate.TButton", command=self.start_generate)
         self.generate_button.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
-        self.status = tk.StringVar(value="请先选择人声 WAV 文件。上万层建议人声音量从 0.01 到 0.03 试。")
+        self.status = tk.StringVar(value="\u8bf7\u5148\u9009\u62e9\u4eba\u58f0 WAV \u6587\u4ef6\u3002\u4e0a\u4e07\u5c42\u5efa\u8bae\u4eba\u58f0\u97f3\u91cf\u4ece 0.01 \u5230 0.03 \u8bd5\u3002")
         ttk.Label(actions, textvariable=self.status, wraplength=440, justify="left").grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
 
-        tabs = ttk.Notebook(right)
-        tabs.grid(row=0, column=0, sticky="nsew")
-        self.build_affirmation_tab(tabs)
-        self.build_frequency_tab(tabs)
-        self.build_library_tab(tabs)
+        note = ttk.LabelFrame(frame, text="\u5de5\u4f5c\u53f0\u8bf4\u660e", style="Section.TLabelframe")
+        note.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        ttk.Label(
+            note,
+            text="\u8fd9\u91cc\u4e13\u95e8\u8d1f\u8d23\u97f3\u9891\u5236\u4f5c\u3002\u9891\u7387\u548c\u97f3\u4e50\u5e93\u5c5e\u4e8e\u5236\u4f5c\u7d20\u6750\uff0c\u5728\u5de5\u4f5c\u53f0\u5185\u7ef4\u62a4\uff1b\u80af\u5b9a\u8bed\u3001\u611f\u6069\u65e5\u8bb0\u548c\u613f\u671b\u677f\u4f1a\u5728\u751f\u6210\u65f6\u4e00\u8d77\u5199\u5165\u5bfc\u51fa\u8bb0\u5f55\u3002",
+            wraplength=440,
+            justify="left",
+        ).grid(row=0, column=0, sticky="ew", padx=12, pady=12)
+
+        prompt = ttk.LabelFrame(frame, text="\u5f55\u97f3\u63d0\u793a / \u6807\u6ce8\u7a3f", style="Section.TLabelframe")
+        prompt.grid(row=3, column=0, sticky="nsew", pady=(12, 0))
+        prompt.columnconfigure(0, weight=1)
+        prompt.rowconfigure(0, weight=1)
+        self.recording_prompt_text = tk.Text(prompt, height=7, wrap="word", undo=True)
+        self.recording_prompt_text.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        prompt_buttons = ttk.Frame(prompt)
+        prompt_buttons.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
+        ttk.Button(prompt_buttons, text="\u4ece\u80af\u5b9a\u8bed\u586b\u5165", command=self.fill_recording_prompt_from_affirmations).pack(side="left")
+        ttk.Button(prompt_buttons, text="\u4fdd\u5b58\u6807\u6ce8\u7a3f", command=self.save_affirmation_state).pack(side="left", padx=(8, 0))
+
+    def build_gratitude_tab(self, tabs):
+        frame = ttk.Frame(tabs, padding=12)
+        tabs.add(frame, text="\u611f\u6069\u65e5\u8bb0")
+        frame.columnconfigure(1, weight=1)
+        frame.rowconfigure(1, weight=1)
+
+        top = ttk.LabelFrame(frame, text="\u4eca\u65e5\u80fd\u91cf", style="Section.TLabelframe")
+        top.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        top.columnconfigure(1, weight=1)
+        self.entry(top, 0, "\u65e5\u671f", "gratitude_date")
+        self.entry(top, 1, "\u4eca\u65e5\u610f\u56fe", "daily_intention")
+        self.entry(top, 2, "\u5df2\u62e5\u6709\u611f\u53d7", "embodied_feeling")
+
+        calendar_box = ttk.LabelFrame(frame, text="\u65e5\u5386", style="Section.TLabelframe")
+        calendar_box.grid(row=1, column=0, sticky="nsw", padx=(0, 12))
+        calendar_box.rowconfigure(0, weight=1)
+        self.gratitude_date_list = tk.Listbox(calendar_box, width=18, height=14)
+        self.gratitude_date_list.grid(row=0, column=0, sticky="ns", padx=8, pady=8)
+        self.gratitude_date_list.bind("<<ListboxSelect>>", self.on_gratitude_date_selected)
+        ttk.Button(calendar_box, text="\u4eca\u5929", command=self.select_today_gratitude).grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
+
+        gratitude = ttk.LabelFrame(frame, text="\u611f\u6069\u65e5\u8bb0", style="Section.TLabelframe")
+        gratitude.grid(row=1, column=1, sticky="nsew")
+        gratitude.columnconfigure(0, weight=1)
+        gratitude.rowconfigure(0, weight=1)
+        self.gratitude_text = tk.Text(gratitude, height=16, wrap="word", undo=True)
+        self.gratitude_text.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        self.gratitude_text.insert("1.0", "\u4eca\u5929\u6211\u611f\u8c22\uff1a\n\u6211\u5df2\u7ecf\u62e5\u6709\uff1a\n\u8ba9\u6211\u5b89\u5fc3\u7684\u662f\uff1a")
+        gratitude_buttons = ttk.Frame(gratitude)
+        gratitude_buttons.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
+        ttk.Button(gratitude_buttons, text="\u4fdd\u5b58\u4eca\u65e5", command=self.save_gratitude_entry).pack(side="left")
+        ttk.Button(gratitude_buttons, text="\u8bfb\u53d6\u65e5\u671f", command=self.load_selected_gratitude_entry).pack(side="left", padx=(8, 0))
+
+    def build_vision_tab(self, tabs):
+        frame = ttk.Frame(tabs, padding=12)
+        tabs.add(frame, text="\u613f\u671b\u677f")
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
+
+        goal = ttk.LabelFrame(frame, text="\u613f\u671b\u677f / \u76ee\u6807\u786e\u8ba4", style="Section.TLabelframe")
+        goal.grid(row=0, column=0, sticky="nsew", pady=(0, 12))
+        goal.columnconfigure(0, weight=1)
+        goal.rowconfigure(1, weight=1)
+        ttk.Label(goal, text="\u628a\u76ee\u6807\u5199\u5177\u4f53\uff0c\u4e5f\u53ef\u4ee5\u4e0a\u4f20\u7167\u7247\u3001\u622a\u56fe\u3001PDF \u6216\u5176\u4ed6\u6587\u4ef6\u4f5c\u4e3a\u76ee\u6807\u6750\u6599\u3002", wraplength=760, justify="left").grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
+        self.goal_text = tk.Text(goal, height=8, wrap="word", undo=True)
+        self.goal_text.grid(row=1, column=0, sticky="nsew", padx=8, pady=8)
+
+        files = ttk.LabelFrame(frame, text="\u76ee\u6807\u7167\u7247 / \u6587\u4ef6", style="Section.TLabelframe")
+        files.grid(row=1, column=0, sticky="nsew")
+        files.columnconfigure(0, weight=1)
+        files.rowconfigure(0, weight=1)
+        self.goal_file_list = tk.Listbox(files, height=5)
+        self.goal_file_list.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        controls = ttk.Frame(files)
+        controls.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
+        ttk.Button(controls, text="\u6dfb\u52a0\u7167\u7247", command=self.add_goal_photos).pack(side="left")
+        ttk.Button(controls, text="\u6dfb\u52a0\u6587\u4ef6", command=self.add_goal_files).pack(side="left", padx=(8, 0))
+        ttk.Button(controls, text="\u79fb\u9664\u9009\u4e2d", command=self.remove_goal_file).pack(side="left", padx=(8, 0))
+        ttk.Button(controls, text="\u6253\u5f00\u9009\u4e2d", command=self.open_goal_file).pack(side="left", padx=(8, 0))
+        ttk.Button(controls, text="\u4fdd\u5b58\u613f\u671b\u677f", command=self.save_manifest_state).pack(side="left", padx=(8, 0))
+        ttk.Button(controls, text="\u8bfb\u53d6\u613f\u671b\u677f", command=lambda: self.load_manifest_state(silent=False)).pack(side="left", padx=(8, 0))
 
     def build_affirmation_tab(self, tabs):
         frame = ttk.Frame(tabs, padding=12)
-        tabs.add(frame, text="主题 / 肯定句")
+        tabs.add(frame, text="\u80af\u5b9a\u8bed\u7ec3\u4e60")
         frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(6, weight=1)
+        frame.rowconfigure(9, weight=1)
         self.entry(frame, 0, "你的名字", "self_name")
         ttk.Label(frame, text="主题模式").grid(row=1, column=0, sticky="w", padx=8, pady=8)
         mode = ttk.Combobox(
@@ -239,32 +374,49 @@ class LocalApp(tk.Tk):
         self.sp_entry = ttk.Entry(frame, textvariable=self.vars["sp_name"])
         self.sp_label.grid(row=3, column=0, sticky="w", padx=8, pady=8)
         self.sp_entry.grid(row=3, column=1, sticky="ew", padx=8, pady=8)
-        ttk.Label(frame, text="肯定句模式").grid(row=4, column=0, sticky="w", padx=8, pady=8)
+
+        practice = ttk.LabelFrame(frame, text="\u9010\u53e5\u7ec3\u4e60", style="Section.TLabelframe")
+        practice.grid(row=4, column=0, columnspan=2, sticky="ew", padx=8, pady=(8, 4))
+        practice.columnconfigure(0, weight=1)
+        self.current_affirmation = tk.StringVar(value="\u70b9\u51fb\u5f00\u59cb\u7ec3\u4e60")
+        self.current_affirmation_count = tk.StringVar(value="\u5f53\u524d\u53e5 0 \u6b21")
+        self.total_affirmation_count = tk.StringVar(value="\u603b\u8ba1 0 \u6b21")
+        ttk.Label(practice, textvariable=self.current_affirmation, wraplength=760, justify="left", font=("", 12, "bold")).grid(row=0, column=0, columnspan=4, sticky="ew", padx=8, pady=(8, 4))
+        ttk.Label(practice, textvariable=self.current_affirmation_count).grid(row=1, column=0, sticky="w", padx=8, pady=(0, 8))
+        ttk.Label(practice, textvariable=self.total_affirmation_count).grid(row=1, column=1, sticky="w", padx=8, pady=(0, 8))
+        ttk.Button(practice, text="\u4e0b\u4e00\u53e5", command=self.next_affirmation).grid(row=1, column=2, sticky="e", padx=8, pady=(0, 8))
+        ttk.Button(practice, text="\u8bb0\u4e00\u6b21", command=self.count_current_affirmation).grid(row=1, column=3, sticky="e", padx=8, pady=(0, 8))
+
+        ttk.Label(frame, text="肯定句模式").grid(row=5, column=0, sticky="w", padx=8, pady=8)
         mode_row = ttk.Frame(frame)
-        mode_row.grid(row=4, column=1, sticky="ew", padx=8, pady=8)
+        mode_row.grid(row=5, column=1, sticky="ew", padx=8, pady=8)
         ttk.Radiobutton(mode_row, text="默认 + 自定义", variable=self.vars["affirmation_mode"], value="default").pack(side="left")
         ttk.Radiobutton(mode_row, text="只用自定义", variable=self.vars["affirmation_mode"], value="custom").pack(side="left", padx=(16, 0))
         buttons = ttk.Frame(frame)
-        buttons.grid(row=5, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 8))
+        buttons.grid(row=6, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 8))
         ttk.Button(buttons, text="填入默认文案", command=self.fill_default_text).pack(side="left")
         ttk.Button(buttons, text="清空文案", command=self.clear_text).pack(side="left", padx=(8, 0))
         ttk.Button(buttons, text="预览最终文案", command=self.preview_affirmations).pack(side="left", padx=(8, 0))
+        ttk.Button(buttons, text="\u4fdd\u5b58\u80af\u5b9a\u8bed", command=self.save_affirmation_state).pack(side="left", padx=(8, 0))
+        ttk.Button(buttons, text="\u91cd\u7f6e\u7edf\u8ba1", command=self.reset_affirmation_counts).pack(side="left", padx=(8, 0))
+        ttk.Button(buttons, text="\u5237\u65b0\u7ec3\u4e60\u5217\u8868", command=self.refresh_affirmation_practice).pack(side="left", padx=(8, 0))
         self.custom_text = tk.Text(frame, height=12, wrap="word", undo=True)
-        self.custom_text.grid(row=6, column=0, columnspan=2, sticky="nsew", padx=8, pady=8)
+        self.custom_text.grid(row=9, column=0, columnspan=2, sticky="nsew", padx=8, pady=8)
 
     def build_frequency_tab(self, tabs):
         frame = ttk.Frame(tabs, padding=12)
-        tabs.add(frame, text="频率")
+        tabs.add(frame, text="\u9891\u7387")
         frame.columnconfigure(0, weight=1)
         grid = ttk.LabelFrame(frame, text="频率选择", style="Section.TLabelframe")
         grid.grid(row=0, column=0, sticky="ew")
         for index, (value, label) in enumerate(PRESET_FREQUENCIES):
             row, col = divmod(index, 2)
-            ttk.Checkbutton(grid, text=f"{value} Hz  {label}", variable=self.frequency_vars[value]).grid(row=row, column=col, sticky="w", padx=12, pady=8)
+            ttk.Checkbutton(grid, text=f"{value} Hz  {label}", variable=self.frequency_vars[value], command=self.ensure_tone_volume).grid(row=row, column=col, sticky="w", padx=12, pady=8)
         custom = ttk.LabelFrame(frame, text="自定义频率", style="Section.TLabelframe")
         custom.grid(row=1, column=0, sticky="ew", pady=(12, 0))
         custom.columnconfigure(1, weight=1)
         self.entry(custom, 0, "频率 Hz", "custom_frequencies")
+        self.vars["custom_frequencies"].trace_add("write", lambda *_args: self.ensure_tone_volume() if self.vars["custom_frequencies"].get().strip() else None)
         self.slider(custom, 1, "频率音量", "tone_volume", 0, 0.05, 0.001, "", precision=3)
         tools = ttk.Frame(frame)
         tools.grid(row=2, column=0, sticky="ew", pady=12)
@@ -275,7 +427,7 @@ class LocalApp(tk.Tk):
 
     def build_library_tab(self, tabs):
         frame = ttk.Frame(tabs, padding=12)
-        tabs.add(frame, text="音乐库 / 录音")
+        tabs.add(frame, text="\u97f3\u4e50\u5e93 / \u5f55\u97f3")
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(2, weight=1)
 
@@ -377,6 +529,18 @@ class LocalApp(tk.Tk):
         self.scales["voice_volume"].set(volume)
         self.status.set(f"已应用预设：{layers} 层，人声音量 {volume:.3f}。")
 
+    def apply_production_preset(self):
+        preset = PRODUCTION_PRESETS.get(self.vars["production_preset"].get())
+        if not preset:
+            return
+        for key, value in preset.items():
+            scale = self.scales.get(key)
+            if scale:
+                scale.set(value)
+            else:
+                self.vars[key].set(str(value))
+        self.status.set("已应用制作方式预设，可以继续微调。")
+
     def sync_intent(self):
         mode = self.vars["intent_mode"].get()
         self.intent_note.configure(text=INTENT_NOTES.get(mode, INTENT_NOTES["general"]))
@@ -413,14 +577,294 @@ class LocalApp(tk.Tk):
         self.status.set("已清空自定义文案。")
 
     def preview_affirmations(self):
-        text = self.affirmation_text() or "当前没有肯定句文案。"
+        text = self.export_text() or "当前没有肯定句文案或显化记录。"
         top = tk.Toplevel(self)
-        top.title("最终肯定句文案")
+        top.title("最终导出文案")
         top.geometry("560x420")
         box = tk.Text(top, wrap="word")
         box.pack(fill="both", expand=True, padx=12, pady=12)
         box.insert("1.0", text)
         box.configure(state="disabled")
+
+    def fill_recording_prompt_from_affirmations(self):
+        text = self.affirmation_text().strip()
+        if not text:
+            self.status.set("\u8fd8\u6ca1\u6709\u53ef\u586b\u5165\u7684\u80af\u5b9a\u8bed\u3002")
+            return
+        self.recording_prompt_text.delete("1.0", "end")
+        self.recording_prompt_text.insert("1.0", text)
+        self.status.set("\u5df2\u628a\u80af\u5b9a\u8bed\u586b\u5165\u5de5\u4f5c\u53f0\u5f55\u97f3\u63d0\u793a\u3002")
+
+    def refresh_affirmation_practice(self):
+        self.affirmation_lines = [
+            line.strip()
+            for line in self.affirmation_text().splitlines()
+            if line.strip()
+        ]
+        if not self.affirmation_lines:
+            self.affirmation_index = 0
+            self.current_affirmation.set("\u8fd8\u6ca1\u6709\u80af\u5b9a\u8bed")
+            self.current_affirmation_count.set("\u5f53\u524d\u53e5 0 \u6b21")
+            self.total_affirmation_count.set("\u603b\u8ba1 0 \u6b21")
+            return
+        self.affirmation_index %= len(self.affirmation_lines)
+        self.show_current_affirmation()
+
+    def show_current_affirmation(self):
+        if not self.affirmation_lines:
+            self.refresh_affirmation_practice()
+            return
+        line = self.affirmation_lines[self.affirmation_index]
+        current_count = self.affirmation_clicks.get(line, 0)
+        total = sum(self.affirmation_clicks.values())
+        self.current_affirmation.set(line)
+        self.current_affirmation_count.set(f"\u5f53\u524d\u53e5 {current_count} \u6b21")
+        self.total_affirmation_count.set(f"\u603b\u8ba1 {total} \u6b21")
+
+    def next_affirmation(self):
+        self.refresh_affirmation_practice()
+        if not self.affirmation_lines:
+            return
+        self.affirmation_index = (self.affirmation_index + 1) % len(self.affirmation_lines)
+        self.show_current_affirmation()
+        self.save_affirmation_state(silent=True)
+
+    def count_current_affirmation(self):
+        self.refresh_affirmation_practice()
+        if not self.affirmation_lines:
+            return
+        line = self.affirmation_lines[self.affirmation_index]
+        self.affirmation_clicks[line] = self.affirmation_clicks.get(line, 0) + 1
+        self.show_current_affirmation()
+        self.save_affirmation_state(silent=True)
+
+    def reset_affirmation_counts(self):
+        self.affirmation_clicks = {}
+        self.show_current_affirmation()
+        self.save_affirmation_state(silent=True)
+        self.status.set("\u80af\u5b9a\u8bed\u7edf\u8ba1\u5df2\u91cd\u7f6e\u3002")
+
+    def save_affirmation_state(self, silent=False):
+        data = {
+            "intent_mode": self.vars["intent_mode"].get(),
+            "affirmation_mode": self.vars["affirmation_mode"].get(),
+            "self_name": self.vars["self_name"].get(),
+            "sp_name": self.vars["sp_name"].get(),
+            "custom_text": self.custom_text.get("1.0", "end").strip(),
+            "recording_prompt": self.recording_prompt_text.get("1.0", "end").strip(),
+            "affirmation_index": self.affirmation_index,
+            "affirmation_clicks": self.affirmation_clicks,
+        }
+        self.affirmation_state_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        if not silent:
+            self.status.set("\u80af\u5b9a\u8bed\u5df2\u4fdd\u5b58\u3002")
+
+    def load_affirmation_state(self, silent=False):
+        if not self.affirmation_state_path.exists():
+            self.refresh_affirmation_practice()
+            return
+        try:
+            data = json.loads(self.affirmation_state_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            if not silent:
+                messagebox.showerror("\u8bfb\u53d6\u5931\u8d25", str(exc))
+            return
+        for key in ("intent_mode", "affirmation_mode", "self_name", "sp_name"):
+            if key in data:
+                self.vars[key].set(data[key])
+        self.custom_text.delete("1.0", "end")
+        self.custom_text.insert("1.0", data.get("custom_text", ""))
+        self.recording_prompt_text.delete("1.0", "end")
+        self.recording_prompt_text.insert("1.0", data.get("recording_prompt", ""))
+        self.affirmation_index = int(data.get("affirmation_index", 0) or 0)
+        self.affirmation_clicks = {
+            str(key): int(value)
+            for key, value in data.get("affirmation_clicks", {}).items()
+        }
+        self.refresh_affirmation_practice()
+        if not silent:
+            self.status.set("\u80af\u5b9a\u8bed\u5df2\u8bfb\u53d6\u3002")
+
+    def gratitude_date(self):
+        value = self.vars["gratitude_date"].get().strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return value
+        today = time.strftime("%Y-%m-%d")
+        self.vars["gratitude_date"].set(today)
+        return today
+
+    def save_gratitude_entry(self, silent=False):
+        date_key = self.gratitude_date()
+        self.gratitude_entries[date_key] = {
+            "daily_intention": self.vars["daily_intention"].get(),
+            "embodied_feeling": self.vars["embodied_feeling"].get(),
+            "gratitude": self.gratitude_text.get("1.0", "end").strip(),
+        }
+        self.gratitude_state_path.write_text(
+            json.dumps({"entries": self.gratitude_entries}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        self.refresh_gratitude_calendar()
+        if not silent:
+            self.status.set(f"{date_key} \u611f\u6069\u65e5\u8bb0\u5df2\u4fdd\u5b58\u3002")
+
+    def load_gratitude_state(self, silent=False):
+        if self.gratitude_state_path.exists():
+            try:
+                data = json.loads(self.gratitude_state_path.read_text(encoding="utf-8"))
+                self.gratitude_entries = data.get("entries", {})
+            except Exception as exc:
+                if not silent:
+                    messagebox.showerror("\u8bfb\u53d6\u5931\u8d25", str(exc))
+        self.refresh_gratitude_calendar()
+        self.load_gratitude_entry(self.gratitude_date(), silent=True)
+
+    def refresh_gratitude_calendar(self):
+        if not hasattr(self, "gratitude_date_list"):
+            return
+        self.gratitude_date_list.delete(0, "end")
+        dates = sorted(set(self.gratitude_entries.keys()) | {time.strftime("%Y-%m-%d")}, reverse=True)
+        for date_key in dates:
+            self.gratitude_date_list.insert("end", date_key)
+
+    def load_gratitude_entry(self, date_key, silent=False):
+        entry = self.gratitude_entries.get(date_key)
+        self.vars["gratitude_date"].set(date_key)
+        if not entry:
+            if not silent:
+                self.status.set(f"{date_key} \u8fd8\u6ca1\u6709\u611f\u6069\u65e5\u8bb0\u3002")
+            return
+        self.vars["daily_intention"].set(entry.get("daily_intention", ""))
+        self.vars["embodied_feeling"].set(entry.get("embodied_feeling", ""))
+        self.gratitude_text.delete("1.0", "end")
+        self.gratitude_text.insert("1.0", entry.get("gratitude", ""))
+        if not silent:
+            self.status.set(f"\u5df2\u8bfb\u53d6 {date_key} \u7684\u611f\u6069\u65e5\u8bb0\u3002")
+
+    def load_selected_gratitude_entry(self):
+        selection = self.gratitude_date_list.curselection()
+        if not selection:
+            self.load_gratitude_entry(self.gratitude_date())
+            return
+        self.load_gratitude_entry(self.gratitude_date_list.get(selection[0]))
+
+    def on_gratitude_date_selected(self, _event=None):
+        selection = self.gratitude_date_list.curselection()
+        if selection:
+            self.load_gratitude_entry(self.gratitude_date_list.get(selection[0]), silent=True)
+
+    def select_today_gratitude(self):
+        self.load_gratitude_entry(time.strftime("%Y-%m-%d"))
+
+    def manifest_text(self):
+        sections = []
+        intention = self.vars["daily_intention"].get().strip()
+        if intention:
+            sections.append("【今日意图】\n" + intention)
+        feeling = self.vars["embodied_feeling"].get().strip()
+        if feeling:
+            sections.append("【已拥有感受】\n" + feeling)
+        gratitude = self.gratitude_text.get("1.0", "end").strip()
+        if gratitude:
+            sections.append("【感恩日记】\n" + gratitude)
+        goal = self.goal_text.get("1.0", "end").strip()
+        if goal:
+            sections.append("【愿望板 / 目标确认】\n" + goal)
+        if self.goal_files:
+            files = "\n".join(str(path) for path in self.goal_files)
+            sections.append("【目标附件】\n" + files)
+        return "\n\n".join(sections)
+
+    def export_text(self):
+        return "\n\n".join(part for part in [self.affirmation_text(), self.manifest_text()] if part)
+
+    def add_goal_photos(self):
+        paths = filedialog.askopenfilenames(
+            filetypes=[
+                ("Image files", "*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp"),
+                ("All files", "*.*"),
+            ]
+        )
+        self.add_goal_paths(paths)
+
+    def add_goal_files(self):
+        paths = filedialog.askopenfilenames(filetypes=[("All files", "*.*")])
+        self.add_goal_paths(paths)
+
+    def add_goal_paths(self, paths):
+        existing = {str(path) for path in self.goal_files}
+        for raw in paths:
+            path = Path(raw)
+            if str(path) in existing:
+                continue
+            self.goal_files.append(path)
+            self.goal_file_list.insert("end", path.name)
+        if paths:
+            self.status.set("已添加目标材料。")
+
+    def remove_goal_file(self):
+        selection = list(self.goal_file_list.curselection())
+        for index in reversed(selection):
+            self.goal_file_list.delete(index)
+            del self.goal_files[index]
+
+    def open_goal_file(self):
+        selection = self.goal_file_list.curselection()
+        if not selection:
+            self.status.set("请先选择一个目标材料。")
+            return
+        webbrowser.open(self.goal_files[selection[0]].resolve().as_uri())
+
+    def save_manifest_state(self):
+        data = {
+            "daily_intention": self.vars["daily_intention"].get(),
+            "embodied_feeling": self.vars["embodied_feeling"].get(),
+            "gratitude": self.gratitude_text.get("1.0", "end").strip(),
+            "goal": self.goal_text.get("1.0", "end").strip(),
+            "goal_files": [str(path) for path in self.goal_files],
+        }
+        self.manifest_state_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        self.status.set("\u613f\u671b\u677f\u5df2\u4fdd\u5b58\u3002")
+
+    def load_manifest_state(self, silent=False):
+        if not self.manifest_state_path.exists():
+            if not silent:
+                self.status.set("\u8fd8\u6ca1\u6709\u4fdd\u5b58\u8fc7\u613f\u671b\u677f\u3002")
+            return
+        try:
+            data = json.loads(self.manifest_state_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            if not silent:
+                messagebox.showerror("\u8bfb\u53d6\u5931\u8d25", str(exc))
+            return
+
+        self.vars["daily_intention"].set(data.get("daily_intention", ""))
+        self.vars["embodied_feeling"].set(data.get("embodied_feeling", ""))
+        self.gratitude_text.delete("1.0", "end")
+        self.gratitude_text.insert("1.0", data.get("gratitude", ""))
+        self.goal_text.delete("1.0", "end")
+        self.goal_text.insert("1.0", data.get("goal", ""))
+        self.goal_files = [Path(path) for path in data.get("goal_files", [])]
+        self.goal_file_list.delete(0, "end")
+        for path in self.goal_files:
+            self.goal_file_list.insert("end", path.name)
+        if not silent:
+            self.status.set("\u613f\u671b\u677f\u5df2\u8bfb\u53d6\u3002")
+
+    def on_close(self):
+        try:
+            self.save_manifest_state()
+            self.save_affirmation_state(silent=True)
+            self.save_gratitude_entry(silent=True)
+        except Exception:
+            pass
+        self.destroy()
 
     def analyze_frequency_keywords(self):
         text = self.affirmation_text().lower()
@@ -442,6 +886,7 @@ class LocalApp(tk.Tk):
         top, recommended = self.analyze_frequency_keywords()
         for value, var in self.frequency_vars.items():
             var.set(value in recommended)
+        self.ensure_tone_volume()
         if top:
             matches = " / ".join(f"{label}({', '.join(hits[:3])})" for _score, label, _freq, hits in top)
         else:
@@ -454,6 +899,15 @@ class LocalApp(tk.Tk):
             var.set(False)
         self.vars["custom_frequencies"].set("")
         self.status.set("已清空频率选择。")
+
+    def ensure_tone_volume(self):
+        if float(self.vars["tone_volume"].get() or 0) > 0:
+            return
+        scale = self.scales.get("tone_volume")
+        if scale:
+            scale.set(0.006)
+        else:
+            self.vars["tone_volume"].set("0.006")
 
     def selected_frequencies(self):
         values = [str(value) for value, var in self.frequency_vars.items() if var.get()]
@@ -703,6 +1157,9 @@ class LocalApp(tk.Tk):
             minutes=float(self.vars["minutes"].get()),
             voice_layers=int(float(self.vars["voice_layers"].get())),
             voice_volume=float(self.vars["voice_volume"].get()),
+            voice_speed=float(self.vars["voice_speed"].get()),
+            voice_stereo_width=float(self.vars["voice_stereo_width"].get()),
+            layer_spacing=float(self.vars["layer_spacing"].get()),
             music_volume=float(self.vars["music_volume"].get()),
             noise_volume=float(self.vars["noise_volume"].get()),
             fade_seconds=float(self.vars["fade_seconds"].get()),
@@ -710,7 +1167,7 @@ class LocalApp(tk.Tk):
             tone_volume=float(self.vars["tone_volume"].get()),
             sample_rate=int(self.vars["sample_rate"].get()),
             chunk_seconds=10,
-            affirmations_text=self.affirmation_text(),
+            affirmations_text=self.export_text(),
         )
 
     def start_generate(self):
@@ -738,9 +1195,33 @@ class LocalApp(tk.Tk):
             from generate_sub import generate
 
             output = generate(args, progress=lambda value: self.events.put(("progress", value)))
+            self.export_manifest_assets(args)
             self.events.put(("done", output))
         except Exception as exc:
             self.events.put(("error", exc))
+
+    def export_manifest_assets(self, args):
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        self.save_manifest_state()
+        self.save_affirmation_state(silent=True)
+        self.save_gratitude_entry(silent=True)
+        manifest_text = self.manifest_text()
+        if manifest_text:
+            (output_dir / f"{args.name}_manifest_journal.txt").write_text(manifest_text.rstrip() + "\n", encoding="utf-8")
+        if not self.goal_files:
+            return
+        assets_dir = output_dir / f"{args.name}_assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        for source in self.goal_files:
+            if not source.exists() or not source.is_file():
+                continue
+            target = assets_dir / source.name
+            counter = 2
+            while target.exists():
+                target = assets_dir / f"{source.stem}_{counter}{source.suffix}"
+                counter += 1
+            shutil.copy2(source, target)
 
     def poll_events(self):
         try:

@@ -18,7 +18,15 @@
             <div class="status-pill" id="systemStatus">Ready</div>
           </div>
 
+          <nav class="page-tabs" aria-label="页面切换">
+            <button type="button" class="page-tab active" data-page-target="studio">制作工作台</button>
+            <button type="button" class="page-tab" data-page-target="affirmations">肯定语</button>
+            <button type="button" class="page-tab" data-page-target="gratitude">感恩日记</button>
+            <button type="button" class="page-tab" data-page-target="vision">愿望板</button>
+          </nav>
+
           <form id="generatorForm" class="control-grid">
+            <div class="page-section active" data-page-section="studio">
             <label>
               <span>你的名字</span>
               <input name="selfName" value="我" maxlength="40" />
@@ -31,6 +39,18 @@
                 <option value="sp">SP / 特定对象</option>
                 <option value="money">金钱 / 事业</option>
                 <option value="study">学业 / 考试</option>
+              </select>
+            </label>
+
+            <label>
+              <span>制作方式</span>
+              <select name="productionPreset" id="productionPreset">
+                <option value="manual">手动调整</option>
+                <option value="clear">清晰可辨</option>
+                <option value="masked">轻度掩蔽</option>
+                <option value="dense">高密度叠层</option>
+                <option value="sleep">睡眠低声</option>
+                <option value="texture">快速纹理</option>
               </select>
             </label>
 
@@ -69,6 +89,21 @@
             <label>
               <span>人声层数 <output id="voiceLayersOut">3</output></span>
               <input name="voiceLayers" type="range" min="1" max="60" step="1" value="3" />
+            </label>
+
+            <label>
+              <span>人声倍速 <output id="voiceSpeedOut">1</output>x</span>
+              <input name="voiceSpeed" type="range" min="0.5" max="2" step="0.05" value="1" />
+            </label>
+
+            <label>
+              <span>声像宽度 <output id="voiceStereoWidthOut">1</output></span>
+              <input name="voiceStereoWidth" type="range" min="0" max="1" step="0.05" value="1" />
+            </label>
+
+            <label>
+              <span>层间错位 <output id="layerSpacingOut">0.37</output> sec</span>
+              <input name="layerSpacing" type="range" min="0.03" max="0.8" step="0.01" value="0.37" />
             </label>
 
             <label>
@@ -165,6 +200,62 @@
 
             <p class="wide hint-line">层数参考：2-4 层更清晰，10-30 层更接近社区高密度风格，30 层以上会更糊也更慢。</p>
 
+            <button class="primary-button" id="submitButton" type="submit">
+              <span class="button-icon">♪</span>
+              <span>生成 WAV</span>
+            </button>
+            </div>
+
+            <div class="page-section" data-page-section="gratitude">
+            <div class="wide energy-panel">
+              <div class="energy-header">
+                <div>
+                  <span>能量面板</span>
+                  <p>记录感恩、意图和已拥有感受，会一起保存到文案文件里。</p>
+                </div>
+              </div>
+              <label>
+                <span>感恩日记</span>
+                <textarea name="gratitudeLines" rows="4" maxlength="1600" placeholder="今天我感谢……&#10;我已经拥有……&#10;让我安心的是……"></textarea>
+              </label>
+              <label>
+                <span>今日意图</span>
+                <input name="dailyIntention" maxlength="180" placeholder="例如：我选择稳定、轻松、被善待的状态。" />
+              </label>
+              <label>
+                <span>已拥有感受</span>
+                <input name="embodiedFeeling" maxlength="180" placeholder="例如：我已经在被爱、被支持、被看见的感觉里。" />
+              </label>
+            </div>
+            </div>
+
+            <div class="page-section" data-page-section="affirmations">
+            <div class="wide web-helper-panel">
+              <div class="energy-header">
+                <div>
+                  <span>网页基础助手</span>
+                  <p>使用浏览器本地保存，清理缓存或换浏览器可能会丢失。</p>
+                </div>
+                <div class="library-actions">
+                  <button class="ghost-button small" id="saveWebStateButton" type="button">保存</button>
+                  <button class="ghost-button small" id="loadWebStateButton" type="button">读取</button>
+                </div>
+              </div>
+
+              <div class="practice-card">
+                <p id="currentAffirmation" class="practice-line">点击“刷新练习”开始</p>
+                <div class="practice-meta">
+                  <span id="currentAffirmationCount">当前句 0 次</span>
+                  <span id="totalAffirmationCount">总计 0 次</span>
+                </div>
+                <div class="text-actions">
+                  <button class="ghost-button small" id="refreshPracticeButton" type="button">刷新练习</button>
+                  <button class="ghost-button small" id="nextAffirmationButton" type="button">下一句</button>
+                  <button class="ghost-button small" id="countAffirmationButton" type="button">记一次</button>
+                </div>
+              </div>
+            </div>
+
             <fieldset class="mode-row">
               <legend>肯定句</legend>
               <label class="radio-card">
@@ -186,11 +277,31 @@
               <button class="ghost-button small" id="fillDefaultTextButton" type="button">填入默认文案</button>
               <button class="ghost-button small" id="clearTextButton" type="button">清空文案</button>
             </div>
+            </div>
 
-            <button class="primary-button" id="submitButton" type="submit">
-              <span class="button-icon">♪</span>
-              <span>生成 WAV</span>
-            </button>
+            <div class="page-section" data-page-section="vision">
+              <div class="wide web-helper-panel">
+                <div class="energy-header">
+                  <div>
+                    <span>愿望板</span>
+                    <p>记录目标、目标材料名称和确认文字；浏览器只能长期保存文字和文件名。</p>
+                  </div>
+                  <div class="library-actions">
+                    <button class="ghost-button small" id="saveVisionButton" type="button">保存</button>
+                    <button class="ghost-button small" id="loadVisionButton" type="button">读取</button>
+                  </div>
+                </div>
+                <label>
+                  <span>愿望板 / 目标确认</span>
+                  <textarea name="goalText" rows="8" maxlength="2400" placeholder="把目标写具体，也可以记录目标图片或文件的名称。"></textarea>
+                </label>
+                <label class="file-control">
+                  <span>目标照片 / 文件（仅记录名称）</span>
+                  <input name="goalFiles" type="file" multiple />
+                </label>
+                <p class="goal-file-list" id="goalFileList">尚未选择目标文件。</p>
+              </div>
+            </div>
           </form>
         </div>
 
